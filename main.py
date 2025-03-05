@@ -38,6 +38,9 @@ class DocumentRequest(BaseModel):
 class QueryRequest(BaseModel):
     query: str
 
+class SwitchFolderRequest(BaseModel):
+    new_folder: str
+
 def create_app():
     app = FastAPI()
 
@@ -67,6 +70,17 @@ def create_app():
             llm_client = RequestyLLMClient(api_key=api_key)
             response = rag_system.generate_response(query=query, api_call_function=lambda prompt: llm_client.generate_response(prompt))
             return {"response": response}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @app.post("/switch_folder")
+    async def switch_folder(request: SwitchFolderRequest):
+        try:
+            new_folder = request.new_folder
+            from document_rag import DocumentRAGSystem
+            rag_system = DocumentRAGSystem(load_from=DEFAULT_RAG_DATA_DIR)
+            rag_system.switch_rag_folder(new_folder)
+            return {"message": f"Switched to new RAG folder: {new_folder}"}
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
