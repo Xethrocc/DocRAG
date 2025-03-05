@@ -206,3 +206,25 @@ You can customize the persistence behavior by modifying the following methods in
 - `save_system_state`: Controls how data is saved to disk
 - `load_system_state`: Controls how data is loaded from disk
 - `is_document_processed`: Checks if a document is already in the system
+
+### Error Handling
+
+The system has been improved with more specific exception types and logging for better error handling. This ensures that errors are properly logged and can be debugged more easily.
+
+### Performance Optimization
+
+The `split_text` function in `text_processing.py` has been optimized for better performance. This ensures that text chunking is done efficiently, even for large documents.
+
+### Unit Tests
+
+Unit tests have been added for all major functions to ensure code reliability. This includes tests for the following functions:
+
+- `document_checker.py`: `is_document_processed`, `get_processed_documents`, `system_exists`
+- `document_rag.py`: `process_documents`, `add_document`, `create_faiss_index`, `retrieve_relevant_context`, `prepare_prompt_with_context`, `truncate_to_max_tokens`, `generate_response`, `save_system_state`, `load_system_state`, `is_document_processed`
+- `example_persistence.py`: Example script
+- `llm_client.py`: `RequestyLLMClient`, `example_api_call`
+- `main.py`: Main entry point
+- `pdf_utils.py`: `extract_text_from_pdf`, `collect_pdf_paths`
+- `text_processing.py`: `split_text`
+
+These tests ensure that the system functions correctly and can handle various edge cases.
