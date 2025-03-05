@@ -26,6 +26,7 @@ The project has been organized into the following modules:
   - requests
   - numpy
   - python-dotenv
+  - tqdm
 
 ## Requesty.ai Integration
 
@@ -214,6 +215,14 @@ The system has been improved with more specific exception types and logging for 
 ### Performance Optimization
 
 The `split_text` function in `text_processing.py` has been optimized for better performance. This ensures that text chunking is done efficiently, even for large documents.
+
+### Handling Large PDFs
+
+To handle large PDFs efficiently, the system processes documents in batches and uses a progress bar to track the processing progress. This helps in optimizing memory usage and provides a visual indication of the progress.
+
+### Using Progress Bar
+
+The `tqdm` library is used to add a progress bar in the `process_documents` method. This helps in tracking the progress of processing large PDFs.
 
 ### Unit Tests
 
