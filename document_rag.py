@@ -8,6 +8,7 @@ import logging
 from typing import List, Dict, Any, Callable, Optional, Tuple, Union
 from sentence_transformers import SentenceTransformer
 from dotenv import load_dotenv
+from tqdm import tqdm
 
 # Load environment variables
 load_dotenv()
@@ -88,7 +89,7 @@ class DocumentRAGSystem:
         """
         processed_docs = {}
         
-        for pdf_path in pdf_paths:
+        for pdf_path in tqdm(pdf_paths, desc="Processing PDFs"):
             try:
                 # Extract text from PDF
                 full_text = extract_text_from_pdf(pdf_path)
@@ -96,12 +97,17 @@ class DocumentRAGSystem:
                 # Split text into chunks
                 chunks = split_text(full_text)
                 
-                # Generate embeddings
-                embeddings = self.embedding_model.encode(chunks)
+                # Process chunks in batches to optimize memory usage
+                batch_size = 100
+                embeddings = []
+                for i in range(0, len(chunks), batch_size):
+                    batch_chunks = chunks[i:i + batch_size]
+                    batch_embeddings = self.embedding_model.encode(batch_chunks)
+                    embeddings.extend(batch_embeddings)
                 
                 processed_docs[pdf_path] = {
                     'chunks': chunks,
-                    'embeddings': embeddings
+                    'embeddings': np.array(embeddings)
                 }
             except FileNotFoundError as e:
                 logging.error(f"File not found: {str(e)}")
