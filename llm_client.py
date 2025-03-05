@@ -2,9 +2,13 @@ import os
 from typing import Dict, Any, Optional
 from dotenv import load_dotenv
 import openai
+import logging
 
 # Load environment variables
 load_dotenv()
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 class RequestyLLMClient:
     """
@@ -81,9 +85,12 @@ class RequestyLLMClient:
             # Extract the response from the API response
             return response.choices[0].message.content
             
+        except openai.error.OpenAIError as e:
+            logging.error(f"OpenAI API error: {str(e)}")
+            return f"OpenAI API error: {str(e)}"
         except Exception as e:
-            print(f"Error in API request: {str(e)}")
-            return f"Error in request: {str(e)}"
+            logging.error(f"Unexpected error: {str(e)}")
+            return f"Unexpected error: {str(e)}"
 
 
 def example_api_call(prompt: str) -> str:
@@ -97,7 +104,11 @@ def example_api_call(prompt: str) -> str:
     Returns:
     str: API response
     """
-    # Placeholder for API call
-    print("API call with prompt:")
-    print(prompt)
-    return "This would be a generated response from the LLM."
+    try:
+        # Placeholder for API call
+        print("API call with prompt:")
+        print(prompt)
+        return "This would be a generated response from the LLM."
+    except Exception as e:
+        logging.error(f"Error in example API call: {str(e)}")
+        return f"Error in example API call: {str(e)}"

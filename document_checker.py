@@ -1,5 +1,9 @@
 import os
 import json
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def is_document_processed(pdf_path, directory="rag_data"):
     """
@@ -33,8 +37,12 @@ def is_document_processed(pdf_path, directory="rag_data"):
             for stored_path in metadata["pdf_paths"]:
                 if os.path.basename(stored_path) == basename:
                     return True
+    except FileNotFoundError as e:
+        logging.error(f"Metadata file not found: {str(e)}")
+    except json.JSONDecodeError as e:
+        logging.error(f"Error decoding JSON: {str(e)}")
     except Exception as e:
-        print(f"Error checking if document is processed: {str(e)}")
+        logging.error(f"Unexpected error: {str(e)}")
         
     return False
 
@@ -62,8 +70,12 @@ def get_processed_documents(directory="rag_data"):
                 paths.append(path.replace('/', '\\'))
             
             return list(set(paths))  # Remove duplicates
+    except FileNotFoundError as e:
+        logging.error(f"Metadata file not found: {str(e)}")
+    except json.JSONDecodeError as e:
+        logging.error(f"Error decoding JSON: {str(e)}")
     except Exception as e:
-        print(f"Error getting processed documents: {str(e)}")
+        logging.error(f"Unexpected error: {str(e)}")
         
     return []
 
@@ -77,14 +89,18 @@ def system_exists(directory="rag_data"):
     Returns:
     bool: True if the system exists, False otherwise
     """
-    if not os.path.exists(directory):
-        return False
+    try:
+        if not os.path.exists(directory):
+            return False
+            
+        # Check for essential files
+        required_files = [
+            os.path.join(directory, "metadata.json"),
+            os.path.join(directory, "document_index.faiss"),
+            os.path.join(directory, "index_texts.pkl")
+        ]
         
-    # Check for essential files
-    required_files = [
-        os.path.join(directory, "metadata.json"),
-        os.path.join(directory, "document_index.faiss"),
-        os.path.join(directory, "index_texts.pkl")
-    ]
-    
-    return all(os.path.exists(file) for file in required_files)
+        return all(os.path.exists(file) for file in required_files)
+    except Exception as e:
+        logging.error(f"Error checking system existence: {str(e)}")
+        return False
