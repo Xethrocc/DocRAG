@@ -27,6 +27,8 @@ The project has been organized into the following modules:
   - numpy
   - python-dotenv
   - tqdm
+  - fastapi
+  - uvicorn
 
 ## Requesty.ai Integration
 
@@ -249,3 +251,46 @@ The `__init__` method of `DocumentRAGSystem` now uses the `is_document_processed
 #### Ensuring Model Loading in `add_document`
 
 The `add_document` method in `document_rag.py` still checks if a document is already processed before adding it, but now it also ensures the transformer model is loaded if needed.
+
+### API Usage with FastAPI
+
+The system now includes a REST API using FastAPI to handle inputs and outputs. This allows other programs to interact with the Document RAG system through standardized API endpoints.
+
+#### Installation
+
+To use the FastAPI server, you need to install the following additional dependencies:
+
+```bash
+pip install fastapi uvicorn
+```
+
+#### Running the FastAPI Server
+
+You can run the FastAPI server using the following command:
+
+```bash
+python main.py --run_server
+```
+
+The server will start and listen for requests on `http://0.0.0.0:8000`.
+
+#### API Endpoints
+
+The FastAPI server provides the following endpoints:
+
+- `POST /process`: Process a new document and add it to the system
+- `POST /query`: Query the system with a search query
+
+#### Example Usage
+
+To process a new document, send a POST request to `/process` with the path to the PDF document:
+
+```bash
+curl -X POST "http://0.0.0.0:8000/process" -H "Content-Type: application/json" -d '{"pdf_path": "path/to/document.pdf"}'
+```
+
+To query the system, send a POST request to `/query` with the search query:
+
+```bash
+curl -X POST "http://0.0.0.0:8000/query" -H "Content-Type: application/json" -d '{"query": "Your question about the documents?"}'
+```

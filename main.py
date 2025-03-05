@@ -3,6 +3,9 @@ import argparse
 import logging
 from dotenv import load_dotenv
 from llm_client import RequestyLLMClient, example_api_call
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+import uvicorn
 
 # Load environment variables from .env file
 load_dotenv()
@@ -28,6 +31,46 @@ def check_document_status(pdf_path, data_dir=DEFAULT_RAG_DATA_DIR):
     bool: True if the document is already processed, False otherwise
     """
     return is_document_processed(pdf_path, data_dir)
+
+class DocumentRequest(BaseModel):
+    pdf_path: str
+
+class QueryRequest(BaseModel):
+    query: str
+
+def create_app():
+    app = FastAPI()
+
+    @app.post("/process")
+    async def process_document(request: DocumentRequest):
+        try:
+            pdf_path = request.pdf_path
+            if is_document_processed(pdf_path, DEFAULT_RAG_DATA_DIR):
+                return {"message": f"Document {pdf_path} is already processed."}
+            else:
+                from document_rag import DocumentRAGSystem
+                rag_system = DocumentRAGSystem(load_from=DEFAULT_RAG_DATA_DIR)
+                rag_system.add_document(pdf_path, save_directory=DEFAULT_RAG_DATA_DIR)
+                return {"message": f"Document {pdf_path} added to system."}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @app.post("/query")
+    async def query_document(request: QueryRequest):
+        try:
+            query = request.query
+            from document_rag import DocumentRAGSystem
+            rag_system = DocumentRAGSystem(load_from=DEFAULT_RAG_DATA_DIR)
+            api_key = os.getenv('REQUESTY_API_KEY')
+            if not api_key:
+                raise HTTPException(status_code=400, detail="API key not found in environment variables.")
+            llm_client = RequestyLLMClient(api_key=api_key)
+            response = rag_system.generate_response(query=query, api_call_function=lambda prompt: llm_client.generate_response(prompt))
+            return {"response": response}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    return app
 
 def main():
     """
@@ -55,6 +98,7 @@ def main():
                             help='Check if a document is already processed (without loading TensorFlow)')
         parser.add_argument('--force_reprocess', action='store_true',
                             help='Force reprocessing of documents even if already processed')
+        parser.add_argument('--run_server', action='store_true', help='Run the FastAPI server')
         
         args = parser.parse_args()
         
@@ -67,6 +111,12 @@ def main():
         logging.info(f"  add_document: {args.add_document}")
         logging.info(f"  check_document: {args.check_document}")
         logging.info(f"  force_reprocess: {args.force_reprocess}")
+        logging.info(f"  run_server: {args.run_server}")
+        
+        if args.run_server:
+            app = create_app()
+            uvicorn.run(app, host="0.0.0.0", port=8000)
+            return
         
         # Handle checking if a document is already processed
         if args.check_document:
