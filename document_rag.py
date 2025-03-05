@@ -16,7 +16,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 load_dotenv()
 
 # Import our utility modules
-from text_processing import split_text
+from text_processing import split_text, split_text_efficiently
 from pdf_utils import extract_text_from_pdf, collect_pdf_paths
 from document_checker import is_document_processed
 
@@ -524,8 +524,8 @@ class DocumentRAGSystem:
         Returns:
         Tuple[List[str], List[Dict]]: Chunks and their metadata
         """
-        # Split text into chunks using the existing function
-        chunks = split_text(text, chunk_size=self.chunk_size, overlap=self.chunk_overlap)
+        # Split text into chunks using the efficient function
+        chunks = split_text_efficiently(text, chunk_size=self.chunk_size, overlap=self.chunk_overlap)
         
         # Generate metadata for each chunk
         metadata = []
