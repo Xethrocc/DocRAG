@@ -17,7 +17,7 @@ from document_checker import is_document_processed, get_processed_documents, sys
 DEFAULT_RAG_DATA_DIR = "rag_data"
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - '%(message)s')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def check_document_status(pdf_path, data_dir=DEFAULT_RAG_DATA_DIR):
     """
@@ -96,23 +96,23 @@ def main():
         parser.add_argument('--docs_dir', type=str, help='Directory containing PDF documents')
         parser.add_argument('--pdf', type=str, nargs='+', help='Paths to PDF documents')
         parser.add_argument('--query', type=str, help='Search query')
-        parser.add.argument('--api_key', type=str,
+        parser.add_argument('--api_key', type=str,
                             default=os.getenv('REQUESTY_API_KEY'),
                             help='Requesty API key (can also be set in .env file)')
         parser.add_argument('--model', type=str,
                             default=os.getenv('DEFAULT_MODEL', 'deepseek-v3'),
                             choices=['claude-3-sonnet', 'gpt-4', 'deepseek-v3'],
                             help='LLM model (claude-3-sonnet, gpt-4, deepseek-v3)')
-        parser.add.argument('--data_dir', type=str,
+        parser.add_argument('--data_dir', type=str,
                             default=DEFAULT_RAG_DATA_DIR,
                             help=f'Directory for storing processed documents (default: {DEFAULT_RAG_DATA_DIR})')
-        parser.add.argument('--add_document', type=str,
+        parser.add_argument('--add_document', type=str,
                             help='Add a single document to the existing system')
-        parser.add.argument('--check_document', type=str,
+        parser.add_argument('--check_document', type=str,
                             help='Check if a document is already processed (without loading TensorFlow)')
-        parser.add.argument('--force_reprocess', action='store_true',
+        parser.add_argument('--force_reprocess', action='store_true',
                             help='Force reprocessing of documents even if already processed')
-        parser.add.argument('--run_server', action='store_true', help='Run the FastAPI server')
+        parser.add_argument('--run_server', action='store_true', help='Run the FastAPI server')
         
         args = parser.parse_args()
         
