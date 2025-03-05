@@ -1,5 +1,5 @@
 import os
-import numpy as np
+import numpy np
 import faiss
 import tiktoken
 import json
@@ -442,3 +442,27 @@ class DocumentRAGSystem:
         except Exception as e:
             logging.error(f"Error checking if document is processed: {str(e)}")
             return False
+
+    def switch_rag_folder(self, new_folder: str) -> None:
+        """
+        Switches the RAG folder and reloads the system state
+        
+        Parameters:
+        new_folder (str): Path to the new RAG folder
+        
+        Returns:
+        None
+        """
+        try:
+            # Check if the new folder exists
+            if not os.path.exists(new_folder):
+                raise FileNotFoundError(f"The folder {new_folder} does not exist.")
+            
+            # Load the system state from the new folder
+            self.load_system_state(new_folder)
+            
+            print(f"Switched to new RAG folder: {new_folder}")
+        except FileNotFoundError as e:
+            logging.error(f"File not found: {str(e)}")
+        except Exception as e:
+            logging.error(f"Error switching to new RAG folder {new_folder}: {str(e)}")
