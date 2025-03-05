@@ -1,5 +1,5 @@
 import os
-import numpy np
+import numpy as np
 import faiss
 import tiktoken
 import json
