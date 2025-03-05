@@ -71,3 +71,22 @@ def split_text(text: str, chunk_size: int = 500, overlap: int = 100) -> List[str
         chunks.append(' '.join(current_chunk))
     
     return chunks
+
+def split_text_efficiently(text: str, chunk_size: int = 500, overlap: int = 100) -> List[str]:
+    """
+    Splits text into overlapping chunks more efficiently for large documents.
+    
+    Parameters:
+    text (str): Text to be split
+    chunk_size (int): Maximum number of words per chunk
+    overlap (int): Overlap between chunks in words
+    
+    Returns:
+    List[str]: Text chunks
+    """
+    words = text.split()
+    chunks = []
+    for i in range(0, len(words), chunk_size - overlap):
+        chunk = words[i:i + chunk_size]
+        chunks.append(' '.join(chunk))
+    return chunks
