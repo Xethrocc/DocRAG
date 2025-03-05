@@ -71,3 +71,16 @@ def split_text(text: str, chunk_size: int = 500, overlap: int = 100) -> List[str
         chunks.append(' '.join(current_chunk))
     
     return chunks
+
+def split_large_text(text: str, max_chunk_size: int = 10000) -> List[str]:
+    """
+    Splits large text into smaller, more manageable chunks.
+    
+    Parameters:
+    text (str): Text to be split
+    max_chunk_size (int): Maximum number of characters per chunk
+    
+    Returns:
+    List[str]: List of text chunks
+    """
+    return [text[i:i + max_chunk_size] for i in range(0, len(text), max_chunk_size)]

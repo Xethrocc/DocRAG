@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Import our utility modules
-from text_processing import split_text
+from text_processing import split_text, split_large_text
 from pdf_utils import extract_text_from_pdf, collect_pdf_paths
 
 class DocumentRAGSystem:
@@ -89,7 +89,10 @@ class DocumentRAGSystem:
             full_text = extract_text_from_pdf(pdf_path)
             
             # Split text into chunks
-            chunks = split_text(full_text)
+            if len(full_text) > 10000:  # Arbitrary threshold for large documents
+                chunks = split_large_text(full_text)
+            else:
+                chunks = split_text(full_text)
             
             # Generate embeddings
             embeddings = self.embedding_model.encode(chunks)

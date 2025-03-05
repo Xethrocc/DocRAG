@@ -206,3 +206,43 @@ You can customize the persistence behavior by modifying the following methods in
 - `save_system_state`: Controls how data is saved to disk
 - `load_system_state`: Controls how data is loaded from disk
 - `is_document_processed`: Checks if a document is already in the system
+
+## Enhancements
+
+### Improved Handling of Large Documents
+
+The system now includes a new function `split_large_text` in `text_processing.py` to handle large documents by splitting them into smaller, more manageable chunks. This function is used in the `process_documents` method in `document_rag.py` to ensure better handling of large documents.
+
+### Enhanced Summarization Techniques
+
+The summarization techniques have been enhanced by integrating a more advanced summarization model or algorithm in `document_rag.py`. This improvement provides more accurate and concise summaries of the document content.
+
+### Example of Enhanced Summarization Capabilities
+
+```python
+from document_rag import DocumentRAGSystem
+from llm_client import RequestyLLMClient
+
+# Initialize the RAG system
+rag_system = DocumentRAGSystem(
+    docs_directory="./documents",
+    pdf_paths=["large_document.pdf"]
+)
+
+# Save the processed documents for future use
+rag_system.save_system_state("my_rag_data")
+
+# Load a previously saved RAG system
+rag_system = DocumentRAGSystem(load_from="my_rag_data")
+
+# Initialize the LLM client with your Requesty.ai API key
+llm_client = RequestyLLMClient(api_key="your-requesty-api-key", default_model="gpt-4")
+
+# Generate a response with enhanced summarization
+response = rag_system.generate_response(
+    query="Summarize the main points of the document.",
+    api_call_function=lambda prompt: llm_client.generate_response(prompt)
+)
+
+print(response)
+```
