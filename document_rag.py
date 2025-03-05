@@ -406,18 +406,25 @@ class DocumentRAGSystem:
             
             # Construct enhanced prompt
             prompt = f"""
-            I need you to answer a question based ONLY on the information provided in the following document excerpts.
-            If the answer cannot be determined from these excerpts, please state that clearly.
+            You are a document question-answering assistant. Your task is to answer the following user question based ONLY on the information provided in the document excerpts below.
             
+            USER QUESTION: "{query}"
+            
+            DOCUMENT EXCERPTS:
             {context_text}
             
-            Question: {query}
+            Instructions:
+            1. Answer ONLY the user question above: "{query}"
+            2. Base your answer ONLY on information in the document excerpts
+            3. If the answer cannot be determined from the excerpts, state that clearly and summarize what topics ARE covered in the excerpts
+            4. Include specific details from the document excerpts when relevant
+            5. If different excerpts contain contradictory information, acknowledge this and explain the discrepancy
             
-            Please provide a comprehensive answer that directly addresses the question.
-            Include specific details from the document excerpts when relevant.
-            If different excerpts contain contradictory information, acknowledge this and explain the discrepancy.
+            IMPORTANT: Many document excerpts contain questions as part of their content.
+            - IGNORE ALL QUESTIONS that appear in the document excerpts themselves
+            - ONLY answer the user question: "{query}"
             
-            Ignore any questions within the document excerpts and focus solely on the question provided.
+            If you cannot find information directly related to the user question, explain what topics ARE covered in the provided excerpts so the user understands what information is available.
             """
             
             return prompt
