@@ -16,6 +16,7 @@ load_dotenv()
 # Import our utility modules
 from text_processing import split_text
 from pdf_utils import extract_text_from_pdf, collect_pdf_paths
+from document_checker import is_document_processed
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -39,15 +40,6 @@ class DocumentRAGSystem:
         tokenizer_name (str): Name of the tokenizer
         load_from (str, optional): Directory to load saved system state from
         """
-        # Embedding model
-        self.embedding_model = SentenceTransformer(embedding_model)
-        
-        # Tokenizer for controlling token length
-        self.tokenizer = tiktoken.get_encoding(tokenizer_name)
-        
-        # Maximum context length
-        self.max_context_tokens = max_context_tokens
-        
         # Initialize empty state
         self.documents = {}
         self.pdf_paths = []
@@ -70,6 +62,22 @@ class DocumentRAGSystem:
         # Collect PDF paths
         print(f"Collecting PDF paths with docs_directory={docs_directory}, pdf_paths={pdf_paths}")
         all_pdf_paths = collect_pdf_paths(docs_directory, pdf_paths)
+        
+        # Check if all documents are already processed
+        all_processed = all(is_document_processed(pdf_path) for pdf_path in all_pdf_paths)
+        
+        if all_processed:
+            print("All documents are already processed. Skipping transformer model initialization.")
+            return
+        
+        # Embedding model
+        self.embedding_model = SentenceTransformer(embedding_model)
+        
+        # Tokenizer for controlling token length
+        self.tokenizer = tiktoken.get_encoding(tokenizer_name)
+        
+        # Maximum context length
+        self.max_context_tokens = max_context_tokens
             
         # Process documents
         self.documents = self.process_documents(all_pdf_paths)
@@ -136,6 +144,12 @@ class DocumentRAGSystem:
             if self.is_document_processed(pdf_path, save_directory):
                 print(f"Document {pdf_path} is already processed. Skipping.")
                 return
+            
+            # Ensure the transformer model is loaded if needed
+            if not hasattr(self, 'embedding_model'):
+                self.embedding_model = SentenceTransformer(os.getenv('EMBEDDING_MODEL', 'all-MiniLM-L6-v2'))
+                self.tokenizer = tiktoken.get_encoding("cl100k_base")
+                self.max_context_tokens = int(os.getenv('MAX_CONTEXT_TOKENS', 3500))
                 
             # Process document
             new_doc = self.process_documents([pdf_path])
