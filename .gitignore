@@ -30,6 +30,9 @@ ENV/
 .coverage
 htmlcov/
 .pytest_cache/
+testdoc/
+rag_data/
+rag_aud/
 
 # Logs
 *.log

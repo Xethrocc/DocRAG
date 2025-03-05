@@ -45,6 +45,12 @@ class DocumentRAGSystem:
         self.pdf_paths = []
         self.index_texts = []
         
+        # Initialize embedding model and tokenizer regardless of loading path
+        # to ensure they're always available
+        self.embedding_model = SentenceTransformer(embedding_model)
+        self.tokenizer = tiktoken.get_encoding(tokenizer_name)
+        self.max_context_tokens = max_context_tokens
+        
         # Try to load from saved state if specified
         if load_from:
             if not os.path.exists(load_from):
@@ -67,17 +73,8 @@ class DocumentRAGSystem:
         all_processed = all(is_document_processed(pdf_path) for pdf_path in all_pdf_paths)
         
         if all_processed:
-            print("All documents are already processed. Skipping transformer model initialization.")
+            print("All documents are already processed. Skipping document processing.")
             return
-        
-        # Embedding model
-        self.embedding_model = SentenceTransformer(embedding_model)
-        
-        # Tokenizer for controlling token length
-        self.tokenizer = tiktoken.get_encoding(tokenizer_name)
-        
-        # Maximum context length
-        self.max_context_tokens = max_context_tokens
             
         # Process documents
         self.documents = self.process_documents(all_pdf_paths)
@@ -145,10 +142,15 @@ class DocumentRAGSystem:
                 print(f"Document {pdf_path} is already processed. Skipping.")
                 return
             
-            # Ensure the transformer model is loaded if needed
-            if not hasattr(self, 'embedding_model'):
+            # Ensure the transformer model and tokenizer are loaded
+            # This is now redundant since we initialize in __init__, but keeping for safety
+            if not hasattr(self, 'embedding_model') or self.embedding_model is None:
                 self.embedding_model = SentenceTransformer(os.getenv('EMBEDDING_MODEL', 'all-MiniLM-L6-v2'))
+            
+            if not hasattr(self, 'tokenizer') or self.tokenizer is None:
                 self.tokenizer = tiktoken.get_encoding("cl100k_base")
+                
+            if not hasattr(self, 'max_context_tokens'):
                 self.max_context_tokens = int(os.getenv('MAX_CONTEXT_TOKENS', 3500))
                 
             # Process document
@@ -411,6 +413,11 @@ class DocumentRAGSystem:
                     
                 with open(doc_path, "rb") as f:
                     self.documents[path] = pickle.load(f)
+            
+            # 5. Initialize embedding model and tokenizer
+            self.embedding_model = SentenceTransformer(os.getenv('EMBEDDING_MODEL', 'all-MiniLM-L6-v2'))
+            self.tokenizer = tiktoken.get_encoding("cl100k_base")
+            self.max_context_tokens = int(os.getenv('MAX_CONTEXT_TOKENS', 3500))
             
             print(f"System state loaded from {directory}")
         except FileNotFoundError as e:
