@@ -3,6 +3,7 @@ import PyPDF2
 from typing import List, Dict, Any
 
 def extract_text_from_pdf(pdf_path: str) -> str:
+    print(f"Extracting text from {pdf_path}...")
     """
     Extracts text content from a PDF file.
     
@@ -24,6 +25,7 @@ def extract_text_from_pdf(pdf_path: str) -> str:
     return full_text
 
 def collect_pdf_paths(docs_directory: str = None, pdf_paths: List[str] = None) -> List[str]:
+    print(f"Collecting PDFs from {docs_directory} and {pdf_paths}...")
     """
     Collects PDF file paths from a directory and/or a list of paths.
     

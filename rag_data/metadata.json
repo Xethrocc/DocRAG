@@ -1,0 +1,10 @@
+{
+  "pdf_paths": [
+    "testdoc\\apidocs.pdf"
+  ],
+  "document_info": {
+    "testdoc\\apidocs.pdf": {
+      "chunk_count": 353
+    }
+  }
+}

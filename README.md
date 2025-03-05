@@ -79,12 +79,58 @@ python main.py --docs_dir /path/to/documents --query "Your question about the do
   - `claude-3-sonnet`: Anthropic's Claude 3 Sonnet model
   - `gpt-4`: OpenAI's GPT-4 Turbo model
   - `deepseek-v3`: DeepSeek's DeepSeek-V3 model (deepinfra/deepseek-ai/DeepSeek-V3)
+- `--data_dir`: Directory for storing processed documents (default: "rag_data")
+- `--add_document`: Add a single document to the existing system
+- `--force_reprocess`: Force reprocessing of documents even if already processed
 
 ### Example
 
 ```bash
 python main.py --pdf document1.pdf document2.pdf --query "What are the main topics covered?" --model gpt-4
 ```
+
+### Document Persistence
+
+The system now supports persistent storage of processed documents, allowing you to:
+
+1. Save processed documents to disk
+2. Load previously processed documents without reprocessing
+3. Check if a document has already been processed
+4. Add new documents to an existing system
+
+#### Basic Persistence Usage
+
+```bash
+# Process documents and save to default location (rag_data/)
+python main.py --pdf document1.pdf document2.pdf
+
+# Later, query the same documents without reprocessing
+python main.py --query "What are the key findings?"
+
+# Add a new document to the existing system
+python main.py --add_document document3.pdf
+
+# Specify a custom location for document storage
+python main.py --pdf document1.pdf --data_dir my_documents
+
+# Force reprocessing of documents even if already processed
+python main.py --pdf document1.pdf --force_reprocess
+```
+
+#### Example Script
+
+An example script demonstrating the persistence features is included:
+
+```bash
+# Run the example persistence script
+python example_persistence.py
+```
+
+This script will:
+1. Check if a saved system exists and load it
+2. If no system exists, create a new one with example documents
+3. Allow you to add a new document to the system
+4. Let you query the documents
 
 ## Using as a Library
 
@@ -94,16 +140,26 @@ You can also use the Document RAG system as a library in your own Python code:
 from document_rag import DocumentRAGSystem
 from llm_client import RequestyLLMClient
 
-# Initialize the RAG system
-# Configuration can be provided directly or via environment variables
+# Option 1: Initialize a new RAG system
 rag_system = DocumentRAGSystem(
     docs_directory="./documents",
     pdf_paths=["important_doc.pdf"]
     # embedding_model and max_context_tokens can be set in .env file
 )
 
+# Save the processed documents for future use
+rag_system.save_system_state("my_rag_data")
+
+# Option 2: Load a previously saved RAG system
+rag_system = DocumentRAGSystem(load_from="my_rag_data")
+
+# Add a new document to the system
+rag_system.add_document("new_document.pdf", save_directory="my_rag_data")
+
+# Check if a document is already processed
+is_processed = rag_system.is_document_processed("document.pdf", "my_rag_data")
+
 # Initialize the LLM client with your Requesty.ai API key
-# API key and default model can be provided directly or via environment variables
 llm_client = RequestyLLMClient(api_key="your-requesty-api-key", default_model="gpt-4")
 
 # Generate a response
@@ -130,3 +186,23 @@ The system uses the OpenAI SDK with a custom base URL (`https://router.requesty.
 ### Custom Text Processing
 
 You can customize the text chunking algorithm by modifying the `split_text` function in `text_processing.py`.
+
+### Document Persistence Implementation
+
+The system uses a hybrid approach for document persistence:
+
+1. **Metadata (JSON)**: Document paths and basic information are stored in a JSON file (`metadata.json`).
+2. **FAISS Index**: The vector index is stored as a binary file (`document_index.faiss`).
+3. **Text Chunks**: Original text chunks are stored using pickle (`index_texts.pkl`).
+4. **Document Data**: Each document's chunks and embeddings are stored in separate pickle files.
+
+This approach provides:
+- Fast loading and saving of the system state
+- Ability to check if documents are already processed
+- Incremental updates by adding new documents
+- Separation of concerns for easier debugging and maintenance
+
+You can customize the persistence behavior by modifying the following methods in `DocumentRAGSystem`:
+- `save_system_state`: Controls how data is saved to disk
+- `load_system_state`: Controls how data is loaded from disk
+- `is_document_processed`: Checks if a document is already in the system
