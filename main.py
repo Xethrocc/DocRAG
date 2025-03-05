@@ -1,14 +1,28 @@
 import os
 import argparse
 from dotenv import load_dotenv
-from document_rag import DocumentRAGSystem
 from llm_client import RequestyLLMClient, example_api_call
 
 # Load environment variables from .env file
 load_dotenv()
 
+# Import document_checker for lightweight operations
+from document_checker import is_document_processed, get_processed_documents, system_exists
+
 # Default directory for storing processed documents
 DEFAULT_RAG_DATA_DIR = "rag_data"
+def check_document_status(pdf_path, data_dir=DEFAULT_RAG_DATA_DIR):
+    """
+    Check if a document is already processed without loading TensorFlow
+    
+    Parameters:
+    pdf_path (str): Path to the PDF document
+    data_dir (str): Directory containing the system state
+    
+    Returns:
+    bool: True if the document is already processed, False otherwise
+    """
+    return is_document_processed(pdf_path, data_dir)
 
 def main():
     """
@@ -31,6 +45,8 @@ def main():
                         help=f'Directory for storing processed documents (default: {DEFAULT_RAG_DATA_DIR})')
     parser.add_argument('--add_document', type=str,
                         help='Add a single document to the existing system')
+    parser.add_argument('--check_document', type=str,
+                        help='Check if a document is already processed (without loading TensorFlow)')
     parser.add_argument('--force_reprocess', action='store_true',
                         help='Force reprocessing of documents even if already processed')
     
@@ -43,28 +59,53 @@ def main():
     print(f"  query: {args.query}")
     print(f"  data_dir: {args.data_dir}")
     print(f"  add_document: {args.add_document}")
+    print(f"  check_document: {args.check_document}")
     print(f"  force_reprocess: {args.force_reprocess}")
+    
+    # Handle checking if a document is already processed
+    if args.check_document:
+        is_processed = is_document_processed(args.check_document, args.data_dir)
+        if is_processed:
+            print(f"Document '{args.check_document}' is already processed in the system.")
+        else:
+            print(f"Document '{args.check_document}' is NOT processed in the system.")
+        
+        # If this is the only operation requested, return
+        if not any([args.docs_dir, args.pdf, args.query, args.add_document]):
+            return
     
     # Handle adding a single document to existing system
     if args.add_document:
-        try:
-            # Try to load existing system
-            rag_system = DocumentRAGSystem(load_from=args.data_dir)
-            
-            # Add the document
-            rag_system.add_document(args.add_document, save_directory=args.data_dir)
-            print(f"Document {args.add_document} added to system.")
-            
-            # Exit if no query was provided
+        # First check if document is already processed without loading TensorFlow
+        if is_document_processed(args.add_document, args.data_dir):
+            print(f"Document {args.add_document} is already processed. Skipping.")
             if not args.query:
                 return
-        except FileNotFoundError:
-            print(f"No existing system found in {args.data_dir}. Creating new system...")
-            # Continue with normal initialization
+        else:
+            try:
+                # Only import and load the full system if we need to process a new document
+                from document_rag import DocumentRAGSystem
+                
+                # Try to load existing system
+                rag_system = DocumentRAGSystem(load_from=args.data_dir)
+                
+                # Add the document
+                rag_system.add_document(args.add_document, save_directory=args.data_dir)
+                print(f"Document {args.add_document} added to system.")
+                
+                # Exit if no query was provided
+                if not args.query:
+                    return
+            except FileNotFoundError:
+                print(f"No existing system found in {args.data_dir}. Creating new system...")
+                # Continue with normal initialization
     
     # If no arguments were provided, run example
-    if not any([args.docs_dir, args.pdf, args.query, args.add_document]):
+    if not any([args.docs_dir, args.pdf, args.query, args.add_document, args.check_document]):
         print("No arguments provided. Running example...")
+        
+        # Import the DocumentRAGSystem only when needed
+        from document_rag import DocumentRAGSystem
         
         # Example PDF paths
         pdf_paths = [
@@ -87,50 +128,51 @@ def main():
     else:
         # Try to load existing system if we haven't already
         if not 'rag_system' in locals():
-            try:
-                # Try to load existing system if we have documents to process
-                if not args.force_reprocess and (args.docs_dir or args.pdf):
-                    print(f"Checking for existing system in {args.data_dir}...")
+            # Import the DocumentRAGSystem only when needed
+            from document_rag import DocumentRAGSystem
+            
+            # Collect all PDF paths that might need processing
+            all_pdf_paths = []
+            if args.docs_dir:
+                from pdf_utils import collect_pdf_paths
+                dir_pdfs = collect_pdf_paths(docs_directory=args.docs_dir)
+                all_pdf_paths.extend(dir_pdfs)
+            
+            if args.pdf:
+                all_pdf_paths.extend(args.pdf)
+            
+            # First check if system exists without loading TensorFlow
+            if not args.force_reprocess and system_exists(args.data_dir):
+                print(f"Checking for existing system in {args.data_dir}...")
+                
+                # Check if any documents need processing without loading TensorFlow
+                processed_docs = get_processed_documents(args.data_dir)
+                new_docs = [path for path in all_pdf_paths if path not in processed_docs]
+                
+                if not new_docs and processed_docs:
+                    # If all documents are already processed and we just need to query
+                    if args.query:
+                        rag_system = DocumentRAGSystem(load_from=args.data_dir)
+                        print("Loaded existing system.")
+                    else:
+                        print("All documents are already processed. No query provided.")
+                        return
+                elif all_pdf_paths:
+                    # Load the system and add any new documents
                     rag_system = DocumentRAGSystem(load_from=args.data_dir)
                     print("Loaded existing system.")
                     
-                    # Add any new documents if specified
-                    if args.docs_dir or args.pdf:
-                        print("Adding any new documents to existing system...")
-                        all_pdf_paths = []
-                        
-                        if args.docs_dir:
-                            from pdf_utils import collect_pdf_paths
-                            dir_pdfs = collect_pdf_paths(docs_directory=args.docs_dir)
-                            all_pdf_paths.extend(dir_pdfs)
-                            
-                        if args.pdf:
-                            all_pdf_paths.extend(args.pdf)
-                            
-                        for pdf_path in all_pdf_paths:
-                            if not rag_system.is_document_processed(pdf_path, args.data_dir):
-                                rag_system.add_document(pdf_path, save_directory=args.data_dir)
-                
+                    # Add any new documents
+                    if new_docs:
+                        print("Adding new documents to existing system...")
+                        for pdf_path in new_docs:
+                            rag_system.add_document(pdf_path, save_directory=args.data_dir)
                 else:
-                    # Initialize new RAG system with specified documents
-                    rag_system = DocumentRAGSystem(
-                        docs_directory=args.docs_dir,
-                        pdf_paths=args.pdf
-                    )
-                    
-                    # Save the system state
-                    rag_system.save_system_state(args.data_dir)
-                    
-            except FileNotFoundError as e:
-                print(f"Warning: Directory {args.data_dir} not found. Initializing new system.")
-                
-                # Make sure we have valid parameters
-                if not args.docs_dir and not args.pdf:
-                    print("ERROR: No documents specified. Please provide either --docs_dir or --pdf.")
-                    return
-                
+                    # Just load the system for querying
+                    rag_system = DocumentRAGSystem(load_from=args.data_dir)
+                    print("Loaded existing system for querying.")
+            elif all_pdf_paths:
                 # Initialize new RAG system with specified documents
-                # Pass the actual document directory or PDFs here
                 rag_system = DocumentRAGSystem(
                     docs_directory=args.docs_dir,
                     pdf_paths=args.pdf
@@ -138,6 +180,9 @@ def main():
                 
                 # Save the system state
                 rag_system.save_system_state(args.data_dir)
+            else:
+                print("ERROR: No documents specified. Please provide either --docs_dir or --pdf.")
+                return
         
         # If no API key was provided, ask for one
         api_key = args.api_key

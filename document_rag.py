@@ -371,14 +371,6 @@ class DocumentRAGSystem:
         if hasattr(self, 'pdf_paths') and pdf_path in self.pdf_paths:
             return True
             
-        # Then check saved state if directory exists
-        try:
-            metadata_path = os.path.join(directory, "metadata.json")
-            if os.path.exists(metadata_path):
-                with open(metadata_path, "r") as f:
-                    metadata = json.load(f)
-                return pdf_path in metadata["pdf_paths"]
-        except Exception as e:
-            print(f"Error checking if document is processed: {str(e)}")
-            
-        return False
+        # Then use the lightweight document checker
+        from document_checker import is_document_processed
+        return is_document_processed(pdf_path, directory)
