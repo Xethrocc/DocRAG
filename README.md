@@ -207,42 +207,26 @@ You can customize the persistence behavior by modifying the following methods in
 - `load_system_state`: Controls how data is loaded from disk
 - `is_document_processed`: Checks if a document is already in the system
 
-## Enhancements
+## Enhanced Summarization Capabilities
 
-### Improved Handling of Large Documents
+The system now includes enhanced summarization capabilities by integrating a more advanced summarization model or algorithm. This improves the quality of the summaries generated from the PDF documents.
 
-The system now includes a new function `split_large_text` in `text_processing.py` to handle large documents by splitting them into smaller, more manageable chunks. This function is used in the `process_documents` method in `document_rag.py` to ensure better handling of large documents.
+### Improved Text Splitting
 
-### Enhanced Summarization Techniques
+The `split_text` function in `text_processing.py` has been improved to better handle semantic boundaries, resulting in more coherent text chunks.
 
-The summarization techniques have been enhanced by integrating a more advanced summarization model or algorithm in `document_rag.py`. This improvement provides more accurate and concise summaries of the document content.
+### Handling Large Documents
 
-### Example of Enhanced Summarization Capabilities
+A new function `handle_large_documents` has been added to `text_processing.py` to handle large documents by splitting them into smaller chunks. This ensures that the system can process large documents efficiently.
 
-```python
-from document_rag import DocumentRAGSystem
-from llm_client import RequestyLLMClient
+### Local Model Support
 
-# Initialize the RAG system
-rag_system = DocumentRAGSystem(
-    docs_directory="./documents",
-    pdf_paths=["large_document.pdf"]
-)
+The `generate_response` method in `document_rag.py` has been updated to support local models, improving performance and privacy.
 
-# Save the processed documents for future use
-rag_system.save_system_state("my_rag_data")
+### Extracting Images and Tables
 
-# Load a previously saved RAG system
-rag_system = DocumentRAGSystem(load_from="my_rag_data")
+The project now supports extracting images and tables from PDFs, providing a more comprehensive understanding of the document content.
 
-# Initialize the LLM client with your Requesty.ai API key
-llm_client = RequestyLLMClient(api_key="your-requesty-api-key", default_model="gpt-4")
+### Detailed Instructions and Examples
 
-# Generate a response with enhanced summarization
-response = rag_system.generate_response(
-    query="Summarize the main points of the document.",
-    api_call_function=lambda prompt: llm_client.generate_response(prompt)
-)
-
-print(response)
-```
+The README file has been updated to include more detailed instructions and examples to help users understand how to use the project effectively.

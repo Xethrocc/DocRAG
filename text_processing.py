@@ -72,9 +72,9 @@ def split_text(text: str, chunk_size: int = 500, overlap: int = 100) -> List[str
     
     return chunks
 
-def split_large_text(text: str, max_chunk_size: int = 10000) -> List[str]:
+def handle_large_documents(text: str, max_chunk_size: int = 5000) -> List[str]:
     """
-    Splits large text into smaller, more manageable chunks.
+    Handles large documents by splitting them into smaller chunks.
     
     Parameters:
     text (str): Text to be split
@@ -83,4 +83,7 @@ def split_large_text(text: str, max_chunk_size: int = 10000) -> List[str]:
     Returns:
     List[str]: List of text chunks
     """
-    return [text[i:i + max_chunk_size] for i in range(0, len(text), max_chunk_size)]
+    chunks = []
+    for i in range(0, len(text), max_chunk_size):
+        chunks.append(text[i:i + max_chunk_size])
+    return chunks
