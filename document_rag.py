@@ -11,6 +11,11 @@ from dotenv import load_dotenv
 from tqdm import tqdm
 import networkx as nx
 from sklearn.metrics.pairwise import cosine_similarity
+import spacy
+from sklearn.decomposition import LatentDirichletAllocation
+from sklearn.feature_extraction.text import CountVectorizer
+from textblob import TextBlob
+from rake_nltk import Rake
 
 # Load environment variables
 load_dotenv()
@@ -61,6 +66,12 @@ class DocumentRAGSystem:
         self.embedding_model = SentenceTransformer(embedding_model)
         self.tokenizer = tiktoken.get_encoding(tokenizer_name)
         self.max_context_tokens = max_context_tokens
+        
+        # Initialize NLP models for advanced metadata extraction
+        self.nlp = spacy.load("en_core_web_sm")
+        self.lda_model = LatentDirichletAllocation(n_components=5, random_state=42)
+        self.vectorizer = CountVectorizer(stop_words='english')
+        self.rake = Rake()
         
         # Try to load from saved state if specified
         if load_from:
@@ -125,6 +136,20 @@ class DocumentRAGSystem:
                     batch_embeddings = self.embedding_model.encode(batch_chunks)
                     embeddings.extend(batch_embeddings)
                 
+                # Perform advanced metadata extraction
+                entities = self.extract_entities(full_text)
+                topics = self.extract_topics(full_text)
+                sentiment = self.extract_sentiment(full_text)
+                keywords = self.extract_keywords(full_text)
+                
+                # Store metadata
+                metadata = {
+                    'entities': entities,
+                    'topics': topics,
+                    'sentiment': sentiment,
+                    'keywords': keywords
+                }
+                
                 processed_docs[pdf_path] = {
                     'chunks': chunks,
                     'embeddings': np.array(embeddings),
@@ -136,6 +161,69 @@ class DocumentRAGSystem:
                 logging.error(f"Error processing document {pdf_path}: {str(e)}")
         
         return processed_docs
+    
+    def extract_entities(self, text: str) -> List[Dict[str, str]]:
+        """
+        Extracts named entities from text using NER
+        
+        Parameters:
+        text (str): Text to extract entities from
+        
+        Returns:
+        List[Dict[str, str]]: Extracted entities
+        """
+        doc = self.nlp(text)
+        entities = [{'text': ent.text, 'label': ent.label_} for ent in doc.ents]
+        return entities
+    
+    def extract_topics(self, text: str) -> List[str]:
+        """
+        Extracts main topics from text using LDA
+        
+        Parameters:
+        text (str): Text to extract topics from
+        
+        Returns:
+        List[str]: Extracted topics
+        """
+        text_data = [text]
+        text_vectorized = self.vectorizer.fit_transform(text_data)
+        lda_output = self.lda_model.fit_transform(text_vectorized)
+        topics = [self.vectorizer.get_feature_names_out()[i] for i in lda_output[0].argsort()[-5:]]
+        return topics
+    
+    def extract_sentiment(self, text: str) -> str:
+        """
+        Extracts sentiment from text using sentiment analysis
+        
+        Parameters:
+        text (str): Text to extract sentiment from
+        
+        Returns:
+        str: Extracted sentiment
+        """
+        blob = TextBlob(text)
+        sentiment = blob.sentiment.polarity
+        if sentiment > 0:
+            return "positive"
+        elif sentiment < 0:
+            return "negative"
+        else:
+            return "neutral"
+    
+    def extract_keywords(self, text: str) -> List[str]:
+        """
+        Extracts keywords from text using keyword extraction
+        
+        Parameters:
+        text (str): Text to extract keywords from
+        
+        Returns:
+        List[str]: Extracted keywords
+        """
+        self.rake.extract_keywords_from_text(text)
+        keywords = self.rake.get_ranked_phrases()
+        return keywords
     
     def add_document(self, pdf_path: str, save_directory: str = "rag_data") -> None:
         """
