@@ -237,3 +237,15 @@ Unit tests have been added for all major functions to ensure code reliability. T
 - `text_processing.py`: `split_text`
 
 These tests ensure that the system functions correctly and can handle various edge cases.
+
+### New Behavior: Skipping Transformer Model Initialization
+
+The `DocumentRAGSystem` class now checks if documents are already processed before initializing the transformer model. This optimization helps in reducing unnecessary loading of the transformer model, improving the system's efficiency.
+
+#### Updated Initialization
+
+The `__init__` method of `DocumentRAGSystem` now uses the `is_document_processed` function from `document_checker.py` to determine if the transformer model should be loaded. If all documents are already processed, the transformer model is not loaded during initialization.
+
+#### Ensuring Model Loading in `add_document`
+
+The `add_document` method in `document_rag.py` still checks if a document is already processed before adding it, but now it also ensures the transformer model is loaded if needed.
