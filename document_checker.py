@@ -1,6 +1,7 @@
 import os
 import json
 import logging
+import requests
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -104,3 +105,45 @@ def system_exists(directory="rag_data"):
     except Exception as e:
         logging.error(f"Error checking system existence: {str(e)}")
         return False
+
+def enrich_metadata_with_external_sources(metadata):
+    """
+    Enrich metadata with external data sources
+    
+    Parameters:
+    metadata (dict): Metadata to be enriched
+    
+    Returns:
+    dict: Enriched metadata
+    """
+    try:
+        # Example: Enrich with Wikipedia summaries
+        for entity in metadata.get('entities', []):
+            if entity['label'] in ['PERSON', 'ORG', 'GPE']:
+                summary = get_wikipedia_summary(entity['text'])
+                if summary:
+                    entity['summary'] = summary
+    except Exception as e:
+        logging.error(f"Error enriching metadata: {str(e)}")
+    
+    return metadata
+
+def get_wikipedia_summary(entity_name):
+    """
+    Get Wikipedia summary for a given entity name
+    
+    Parameters:
+    entity_name (str): Name of the entity
+    
+    Returns:
+    str: Wikipedia summary or None if not found
+    """
+    try:
+        response = requests.get(f"https://en.wikipedia.org/api/rest_v1/page/summary/{entity_name}")
+        if response.status_code == 200:
+            data = response.json()
+            return data.get('extract')
+    except Exception as e:
+        logging.error(f"Error fetching Wikipedia summary: {str(e)}")
+    
+    return None

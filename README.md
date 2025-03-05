@@ -294,3 +294,20 @@ To query the system, send a POST request to `/query` with the search query:
 ```bash
 curl -X POST "http://0.0.0.0:8000/query" -H "Content-Type: application/json" -d '{"query": "Your question about the documents?"}'
 ```
+
+### Advanced Metadata Extraction Techniques
+
+The system now includes advanced metadata extraction techniques to enhance document processing:
+
+- **Named Entity Recognition (NER)**: Extracts entities such as names, dates, locations, and organizations from the text.
+- **Topic Modeling**: Identifies the main topics within each document using techniques like Latent Dirichlet Allocation (LDA).
+- **Sentiment Analysis**: Determines the overall sentiment of each document or specific sections.
+- **Keyword Extraction**: Identifies important keywords and phrases within the document.
+
+### Enhanced Metadata Storage and Retrieval
+
+The system has been enhanced to support advanced metadata storage and retrieval:
+
+- **Database Integration**: Stores metadata in a structured database (e.g., SQLite, PostgreSQL) to enable efficient querying and retrieval.
+- **Metadata Versioning**: Implements versioning for metadata to track changes and updates over time.
+- **Metadata Enrichment**: Integrates external data sources (e.g., Wikipedia, DBpedia) to enrich the metadata with additional information.
