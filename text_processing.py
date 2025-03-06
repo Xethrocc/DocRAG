@@ -3,7 +3,7 @@ from typing import List, Tuple
 import spacy
 
 # Load spaCy model for advanced NLP techniques
-nlp = spacy.load("en_core_web_sm")
+nlp = spacy.load("de_core_news_lg")
 
 def split_text(text: str, chunk_size: int = 500, overlap: int = 100) -> List[str]:
     """
