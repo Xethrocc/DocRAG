@@ -279,6 +279,8 @@ def main():
         logging.error(f"File not found: {str(e)}")
     except Exception as e:
         logging.error(f"Unexpected error: {str(e)}")
+        import traceback
+        logging.error(f"Traceback: {traceback.format_exc()}")
 
 if __name__ == "__main__":
     main()

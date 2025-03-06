@@ -139,7 +139,7 @@ def get_wikipedia_summary(entity_name):
     str: Wikipedia summary or None if not found
     """
     try:
-        response = requests.get(f"https://en.wikipedia.org/api/rest_v1/page/summary/{entity_name}")
+        response = requests.get(f"https://de.wikipedia.org/api/rest_v1/page/summary/{entity_name}")
         if response.status_code == 200:
             data = response.json()
             return data.get('extract')

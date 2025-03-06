@@ -53,6 +53,9 @@ class RequestyLLMClient:
         
         if self.default_model not in self.AVAILABLE_MODELS:
             raise ValueError(f"Invalid model: {self.default_model}. Available models: {', '.join(self.AVAILABLE_MODELS.keys())}")
+        
+        # Log the selected model
+        logging.info(f"Using model: {self.default_model} ({self.AVAILABLE_MODELS[self.default_model]['model']})")
     
     def generate_response(self, prompt: str, model: str = None, temperature: float = 0.7, max_tokens: int = 1000) -> str:
         """

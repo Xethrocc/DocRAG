@@ -68,9 +68,9 @@ class DocumentRAGSystem:
         self.max_context_tokens = max_context_tokens
         
         # Initialize NLP models for advanced metadata extraction
-        self.nlp = spacy.load("en_core_web_sm")
+        self.nlp = spacy.load("de_core_news_lg")
         self.lda_model = LatentDirichletAllocation(n_components=5, random_state=42)
-        self.vectorizer = CountVectorizer(stop_words='english')
+        self.vectorizer = CountVectorizer(stop_words=None)  # or 'english' if preferred
         self.rake = Rake()
         
         # Try to load from saved state if specified
@@ -123,23 +123,33 @@ class DocumentRAGSystem:
         for pdf_path in tqdm(pdf_paths, desc="Processing PDFs"):
             try:
                 # Extract text from PDF
+                logging.info(f"Extracting text from {pdf_path}")
                 full_text = extract_text_from_pdf(pdf_path)
+                logging.info(f"Extracted text length: {len(full_text)}")
                 
                 # Split text into chunks with metadata
+                logging.info(f"Splitting text into chunks")
                 chunks, metadata = self.split_text_with_metadata(full_text)
+                logging.info(f"Created {len(chunks)} chunks")
                 
                 # Process chunks in batches to optimize memory usage
                 batch_size = 100
                 embeddings = []
+                logging.info(f"Generating embeddings for chunks")
                 for i in range(0, len(chunks), batch_size):
                     batch_chunks = chunks[i:i + batch_size]
                     batch_embeddings = self.embedding_model.encode(batch_chunks)
                     embeddings.extend(batch_embeddings)
+                logging.info(f"Generated {len(embeddings)} embeddings")
                 
                 # Perform advanced metadata extraction
+                logging.info(f"Extracting entities")
                 entities = self.extract_entities(full_text)
+                logging.info(f"Extracting topics")
                 topics = self.extract_topics(full_text)
+                logging.info(f"Extracting sentiment")
                 sentiment = self.extract_sentiment(full_text)
+                logging.info(f"Extracting keywords")
                 keywords = self.extract_keywords(full_text)
                 
                 # Store metadata
@@ -155,10 +165,13 @@ class DocumentRAGSystem:
                     'embeddings': np.array(embeddings),
                     'metadata': metadata
                 }
+                logging.info(f"Successfully processed document {pdf_path}")
             except FileNotFoundError as e:
                 logging.error(f"File not found: {str(e)}")
             except Exception as e:
                 logging.error(f"Error processing document {pdf_path}: {str(e)}")
+                import traceback
+                logging.error(f"Traceback: {traceback.format_exc()}")
         
         return processed_docs
     
@@ -186,11 +199,30 @@ class DocumentRAGSystem:
         Returns:
         List[str]: Extracted topics
         """
-        text_data = [text]
-        text_vectorized = self.vectorizer.fit_transform(text_data)
-        lda_output = self.lda_model.fit_transform(text_vectorized)
-        topics = [self.vectorizer.get_feature_names_out()[i] for i in lda_output[0].argsort()[-5:]]
-        return topics
+        try:
+            text_data = [text]
+            text_vectorized = self.vectorizer.fit_transform(text_data)
+            logging.info(f"Vectorized text shape: {text_vectorized.shape}")
+            
+            if text_vectorized.sum() == 0:
+                logging.warning("Vectorized text is empty, returning empty topics list")
+                return []
+                
+            lda_output = self.lda_model.fit_transform(text_vectorized)
+            feature_names = self.vectorizer.get_feature_names_out()
+            logging.info(f"Number of features: {len(feature_names)}")
+            
+            if len(feature_names) == 0:
+                logging.warning("No features found, returning empty topics list")
+                return []
+                
+            topics = [feature_names[i] for i in lda_output[0].argsort()[-5:]]
+            return topics
+        except Exception as e:
+            logging.error(f"Error in extract_topics: {str(e)}")
+            import traceback
+            logging.error(f"Traceback: {traceback.format_exc()}")
+            return []
     
     def extract_sentiment(self, text: str) -> str:
         """
@@ -221,9 +253,14 @@ class DocumentRAGSystem:
         Returns:
         List[str]: Extracted keywords
         """
-        self.rake.extract_keywords_from_text(text)
-        keywords = self.rake.get_ranked_phrases()
-        return keywords
+        try:
+            self.rake.extract_keywords_from_text(text)
+            keywords = self.rake.get_ranked_phrases()
+            return keywords
+        except Exception as e:
+            logging.error(f"Error in extract_keywords: {str(e)}")
+            logging.error(f"Text type: {type(text)}, Text length: {len(text) if text else 0}")
+            return []
     
     def add_document(self, pdf_path: str, save_directory: str = "rag_data") -> None:
         """
@@ -381,8 +418,9 @@ class DocumentRAGSystem:
                 for doc_path, doc_data in self.documents.items():
                     if chunk in doc_data['chunks']:
                         chunk_idx = doc_data['chunks'].index(chunk)
-                        if 'metadata' in doc_data and chunk_idx < len(doc_data['metadata']):
-                            metadata = doc_data['metadata'][chunk_idx]
+                        # The metadata is a dictionary for the whole document, not a list per chunk
+                        if 'metadata' in doc_data:
+                            metadata = doc_data['metadata']
                             break
                 
                 # Format chunk with metadata
@@ -430,7 +468,16 @@ class DocumentRAGSystem:
             return prompt
         except Exception as e:
             logging.error(f"Error preparing prompt with context for query '{query}': {str(e)}")
-            return ""
+            import traceback
+            logging.error(f"Traceback: {traceback.format_exc()}")
+            # Return a simple prompt as fallback
+            return f"""
+            You are a document question-answering assistant. Your task is to answer the following user question.
+            
+            USER QUESTION: "{query}"
+            
+            Unfortunately, I couldn't retrieve relevant context from the document. Please provide a general response.
+            """
     
     def truncate_to_max_tokens(self, prompt: str) -> str:
         """
@@ -657,11 +704,12 @@ class DocumentRAGSystem:
         
         for doc_path, doc_data in self.documents.items():
             for i, embedding in enumerate(doc_data['embeddings']):
+                # The metadata is a dictionary for the whole document, not per chunk
                 self.chunk_graph.add_node(global_idx,
                                          doc_path=doc_path,
                                          local_idx=i,
                                          text=doc_data['chunks'][i],
-                                         metadata=doc_data['metadata'][i] if 'metadata' in doc_data else {})
+                                         metadata=doc_data.get('metadata', {}))
                 all_embeddings.append(embedding)
                 chunk_to_doc[global_idx] = (doc_path, i)
                 global_idx += 1
