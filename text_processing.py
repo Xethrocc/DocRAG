@@ -1,5 +1,9 @@
 import re
-from typing import List
+from typing import List, Tuple
+import spacy
+
+# Load spaCy model for advanced NLP techniques
+nlp = spacy.load("en_core_web_sm")
 
 def split_text(text: str, chunk_size: int = 500, overlap: int = 100) -> List[str]:
     """
@@ -90,3 +94,31 @@ def split_text_efficiently(text: str, chunk_size: int = 500, overlap: int = 100)
         chunk = words[i:i + chunk_size]
         chunks.append(' '.join(chunk))
     return chunks
+
+def extract_metadata(text: str) -> Tuple[List[str], List[dict]]:
+    """
+    Extracts metadata from text using advanced NLP techniques.
+    
+    Parameters:
+    text (str): Text to extract metadata from
+    
+    Returns:
+    Tuple[List[str], List[dict]]: Chunks and their metadata
+    """
+    doc = nlp(text)
+    chunks = []
+    metadata = []
+    
+    for sent in doc.sents:
+        chunk = sent.text
+        chunks.append(chunk)
+        
+        # Extract metadata
+        entities = [{'text': ent.text, 'label': ent.label_} for ent in sent.ents]
+        metadata.append({
+            'text': chunk,
+            'entities': entities,
+            'length': len(chunk.split())
+        })
+    
+    return chunks, metadata

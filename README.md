@@ -280,6 +280,7 @@ The FastAPI server provides the following endpoints:
 
 - `POST /process`: Process a new document and add it to the system
 - `POST /query`: Query the system with a search query
+- `POST /switch_folder`: Switch the RAG folder
 
 #### Example Usage
 
@@ -293,6 +294,12 @@ To query the system, send a POST request to `/query` with the search query:
 
 ```bash
 curl -X POST "http://0.0.0.0:8000/query" -H "Content-Type: application/json" -d '{"query": "Your question about the documents?"}'
+```
+
+To switch the RAG folder, send a POST request to `/switch_folder` with the path to the new folder:
+
+```bash
+curl -X POST "http://0.0.0.0:8000/switch_folder" -H "Content-Type: application/json" -d '{"new_folder": "path/to/new/folder"}'
 ```
 
 ### Advanced Metadata Extraction Techniques

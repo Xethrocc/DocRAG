@@ -21,7 +21,7 @@ from rake_nltk import Rake
 load_dotenv()
 
 # Import our utility modules
-from text_processing import split_text, split_text_efficiently
+from text_processing import split_text, split_text_efficiently, extract_metadata
 from pdf_utils import extract_text_from_pdf, collect_pdf_paths
 from document_checker import is_document_processed
 
@@ -129,7 +129,7 @@ class DocumentRAGSystem:
                 
                 # Split text into chunks with metadata
                 logging.info(f"Splitting text into chunks")
-                chunks, metadata = self.split_text_with_metadata(full_text)
+                chunks, metadata = extract_metadata(full_text)
                 logging.info(f"Created {len(chunks)} chunks")
                 
                 # Process chunks in batches to optimize memory usage
