@@ -34,6 +34,7 @@ testdoc/
 rag_data/
 rag_aud/
 
+
 # Logs
 *.log
 
@@ -47,3 +48,8 @@ rag_aud/
 # Temporary files
 tmp/
 temp/
+
+
+rag_data/document_index.faiss
+rag_data/index_texts.pkl
+rag_data/metadata.json

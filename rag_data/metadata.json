@@ -1,10 +1,22 @@
 {
   "pdf_paths": [
-    "testdoc\\apidocs.pdf"
+    "testdoc\\aud_folien.pdf",
+    "testdoc\\Betriebssysteme_Vorlesungsskript.pdf",
+    "testdoc\\Rechnerarchitektur Skript.pdf",
+    "testdoc\\Skript_DBI.pdf"
   ],
   "document_info": {
-    "testdoc\\apidocs.pdf": {
-      "chunk_count": 353
+    "testdoc\\aud_folien.pdf": {
+      "chunk_count": 6972
+    },
+    "testdoc\\Betriebssysteme_Vorlesungsskript.pdf": {
+      "chunk_count": 7340
+    },
+    "testdoc\\Rechnerarchitektur Skript.pdf": {
+      "chunk_count": 5334
+    },
+    "testdoc\\Skript_DBI.pdf": {
+      "chunk_count": 3610
     }
   }
 }
