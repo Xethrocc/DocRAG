@@ -1,6 +1,7 @@
 import os
 import argparse
 import logging
+import time
 from dotenv import load_dotenv
 from llm_client import RequestyLLMClient, example_api_call
 from fastapi import FastAPI, HTTPException
@@ -51,26 +52,46 @@ def create_app():
             if is_document_processed(pdf_path, DEFAULT_RAG_DATA_DIR):
                 return {"message": f"Document {pdf_path} is already processed."}
             else:
+                start_time = time.time()
                 from document_rag import DocumentRAGSystem
+                logging.info(f"Loading RAG system from {DEFAULT_RAG_DATA_DIR}...")
                 rag_system = DocumentRAGSystem(load_from=DEFAULT_RAG_DATA_DIR)
+                logging.info(f"Adding document {pdf_path} to system...")
                 rag_system.add_document(pdf_path, save_directory=DEFAULT_RAG_DATA_DIR)
+                logging.info(f"Document processed in {time.time() - start_time:.2f} seconds")
                 return {"message": f"Document {pdf_path} added to system."}
         except Exception as e:
+            logging.error(f"Error processing document: {str(e)}")
             raise HTTPException(status_code=500, detail=str(e))
 
     @app.post("/query")
     async def query_document(request: QueryRequest):
         try:
             query = request.query
+            start_time = time.time()
             from document_rag import DocumentRAGSystem
+            logging.info(f"Loading RAG system for query: '{query[:50]}...'")
             rag_system = DocumentRAGSystem(load_from=DEFAULT_RAG_DATA_DIR)
+            logging.info(f"RAG system loaded in {time.time() - start_time:.2f} seconds")
+            
             api_key = os.getenv('REQUESTY_API_KEY')
             if not api_key:
                 raise HTTPException(status_code=400, detail="API key not found in environment variables.")
+            
+            logging.info("Initializing LLM client...")
             llm_client = RequestyLLMClient(api_key=api_key)
-            response = rag_system.generate_response(query=query, api_call_function=lambda prompt: llm_client.generate_response(prompt))
+            
+            logging.info("Generating response...")
+            query_start = time.time()
+            response = rag_system.generate_response(
+                query=query, 
+                api_call_function=lambda prompt: llm_client.generate_response(prompt)
+            )
+            logging.info(f"Response generated in {time.time() - query_start:.2f} seconds")
+            
             return {"response": response}
         except Exception as e:
+            logging.error(f"Error querying document: {str(e)}")
             raise HTTPException(status_code=500, detail=str(e))
 
     @app.post("/switch_folder")
@@ -78,10 +99,14 @@ def create_app():
         try:
             new_folder = request.new_folder
             from document_rag import DocumentRAGSystem
+            logging.info(f"Switching to RAG folder: {new_folder}")
+            start_time = time.time()
             rag_system = DocumentRAGSystem(load_from=DEFAULT_RAG_DATA_DIR)
             rag_system.switch_rag_folder(new_folder)
+            logging.info(f"Switched folders in {time.time() - start_time:.2f} seconds")
             return {"message": f"Switched to new RAG folder: {new_folder}"}
         except Exception as e:
+            logging.error(f"Error switching folders: {str(e)}")
             raise HTTPException(status_code=500, detail=str(e))
 
     return app
@@ -100,9 +125,9 @@ def main():
                             default=os.getenv('REQUESTY_API_KEY'),
                             help='Requesty API key (can also be set in .env file)')
         parser.add_argument('--model', type=str,
-                            default=os.getenv('DEFAULT_MODEL', 'deepseek-v3'),
-                            choices=['claude-3-sonnet', 'gpt-4', 'deepseek-v3'],
-                            help='LLM model (claude-3-sonnet, gpt-4, deepseek-v3)')
+                            default=os.getenv('DEFAULT_MODEL', 'o3-mini'),
+                            choices=['claude-3-sonnet', 'gpt-4', 'deepseek-v3', 'deepseek-r1', 'o3-mini'],
+                            help='LLM model (claude-3-sonnet, gpt-4, deepseek-v3, deepseek-r1, o3-mini)')
         parser.add_argument('--data_dir', type=str,
                             default=DEFAULT_RAG_DATA_DIR,
                             help=f'Directory for storing processed documents (default: {DEFAULT_RAG_DATA_DIR})')
@@ -112,7 +137,10 @@ def main():
                             help='Check if a document is already processed (without loading TensorFlow)')
         parser.add_argument('--force_reprocess', action='store_true',
                             help='Force reprocessing of documents even if already processed')
-        parser.add_argument('--run_server', action='store_true', help='Run the FastAPI server')
+        parser.add_argument('--no_graph', action='store_true',
+                            help='Disable chunk graph building for faster loading (reduces context quality)')
+        parser.add_argument('--run_server', action='store_true', 
+                            help='Run the FastAPI server')
         
         args = parser.parse_args()
         
@@ -125,7 +153,9 @@ def main():
         logging.info(f"  add_document: {args.add_document}")
         logging.info(f"  check_document: {args.check_document}")
         logging.info(f"  force_reprocess: {args.force_reprocess}")
+        logging.info(f"  no_graph: {args.no_graph}")
         logging.info(f"  run_server: {args.run_server}")
+        logging.info(f"  model: {args.model}")
         
         if args.run_server:
             app = create_app()
@@ -157,11 +187,16 @@ def main():
                     from document_rag import DocumentRAGSystem
                     
                     # Try to load existing system
-                    rag_system = DocumentRAGSystem(load_from=args.data_dir)
+                    start_time = time.time()
+                    logging.info(f"Loading system from {args.data_dir}...")
+                    rag_system = DocumentRAGSystem(load_from=args.data_dir, use_graph=not args.no_graph)
+                    logging.info(f"System loaded in {time.time() - start_time:.2f} seconds")
                     
                     # Add the document
+                    start_time = time.time()
+                    logging.info(f"Adding document {args.add_document}...")
                     rag_system.add_document(args.add_document, save_directory=args.data_dir)
-                    logging.info(f"Document {args.add_document} added to system.")
+                    logging.info(f"Document added in {time.time() - start_time:.2f} seconds")
                     
                     # Exit if no query was provided
                     if not args.query:
@@ -184,20 +219,29 @@ def main():
             ]
             
             # Initialize RAG system
-            rag_system = DocumentRAGSystem(pdf_paths=pdf_paths)
+            start_time = time.time()
+            logging.info("Initializing new RAG system...")
+            rag_system = DocumentRAGSystem(pdf_paths=pdf_paths, use_graph=not args.no_graph)
+            logging.info(f"RAG system initialized in {time.time() - start_time:.2f} seconds")
             
             # Save the system state
+            logging.info(f"Saving system state to {args.data_dir}...")
+            start_time = time.time()
             rag_system.save_system_state(args.data_dir)
+            logging.info(f"System state saved in {time.time() - start_time:.2f} seconds")
             
             # Example query
             query = "What are the main topics of the course?"
             
             # Since no API key was provided, use an example function
+            logging.info(f"Generating example response for query: '{query}'")
+            start_time = time.time()
             response = rag_system.generate_response(query, example_api_call)
+            logging.info(f"Response generated in {time.time() - start_time:.2f} seconds")
             
         else:
             # Try to load existing system if we haven't already
-            if not 'rag_system' in locals():
+            if 'rag_system' not in locals():
                 # Import the DocumentRAGSystem only when needed
                 from document_rag import DocumentRAGSystem
                 
@@ -222,34 +266,50 @@ def main():
                     if not new_docs and processed_docs:
                         # If all documents are already processed and we just need to query
                         if args.query:
-                            rag_system = DocumentRAGSystem(load_from=args.data_dir)
-                            logging.info("Loaded existing system.")
+                            start_time = time.time()
+                            logging.info(f"Loading existing system for query...")
+                            rag_system = DocumentRAGSystem(load_from=args.data_dir, use_graph=not args.no_graph)
+                            logging.info(f"Existing system loaded in {time.time() - start_time:.2f} seconds")
                         else:
                             logging.info("All documents are already processed. No query provided.")
                             return
                     elif all_pdf_paths:
                         # Load the system and add any new documents
-                        rag_system = DocumentRAGSystem(load_from=args.data_dir)
-                        logging.info("Loaded existing system.")
+                        start_time = time.time()
+                        logging.info("Loading existing system to add new documents...")
+                        rag_system = DocumentRAGSystem(load_from=args.data_dir, use_graph=not args.no_graph)
+                        logging.info(f"Existing system loaded in {time.time() - start_time:.2f} seconds")
                         
                         # Add any new documents
                         if new_docs:
                             logging.info("Adding new documents to existing system...")
                             for pdf_path in new_docs:
+                                doc_start = time.time()
+                                logging.info(f"Adding document: {pdf_path}")
                                 rag_system.add_document(pdf_path, save_directory=args.data_dir)
+                                logging.info(f"Document added in {time.time() - doc_start:.2f} seconds")
                     else:
                         # Just load the system for querying
-                        rag_system = DocumentRAGSystem(load_from=args.data_dir)
-                        logging.info("Loaded existing system for querying.")
+                        start_time = time.time()
+                        logging.info("Loading existing system for querying...")
+                        rag_system = DocumentRAGSystem(load_from=args.data_dir, use_graph=not args.no_graph)
+                        logging.info(f"System loaded in {time.time() - start_time:.2f} seconds")
                 elif all_pdf_paths:
                     # Initialize new RAG system with specified documents
+                    start_time = time.time()
+                    logging.info("Initializing new RAG system with specified documents...")
                     rag_system = DocumentRAGSystem(
                         docs_directory=args.docs_dir,
-                        pdf_paths=args.pdf
+                        pdf_paths=args.pdf,
+                        use_graph=not args.no_graph
                     )
+                    logging.info(f"RAG system initialized in {time.time() - start_time:.2f} seconds")
                     
                     # Save the system state
+                    save_start = time.time()
+                    logging.info(f"Saving system state to {args.data_dir}...")
                     rag_system.save_system_state(args.data_dir)
+                    logging.info(f"System state saved in {time.time() - save_start:.2f} seconds")
                 else:
                     logging.error("ERROR: No documents specified. Please provide either --docs_dir or --pdf.")
                     return
@@ -260,6 +320,7 @@ def main():
                 api_key = input("Please enter your Requesty API key: ")
             
             # Initialize LLM client
+            logging.info(f"Initializing LLM client with model: {args.model}")
             llm_client = RequestyLLMClient(api_key=api_key, default_model=args.model)
             
             # If no query was provided, ask for one
@@ -268,10 +329,13 @@ def main():
                 query = input("Please enter your query: ")
             
             # Generate response
+            logging.info(f"Generating response for query: '{query[:50]}...'")
+            start_time = time.time()
             response = rag_system.generate_response(
                 query=query,
                 api_call_function=lambda prompt: llm_client.generate_response(prompt)
             )
+            logging.info(f"Response generated in {time.time() - start_time:.2f} seconds")
         
         logging.info("\nResponse:")
         logging.info(response)

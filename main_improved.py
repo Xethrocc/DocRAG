@@ -2,6 +2,7 @@ import os
 import argparse
 import logging
 import shutil
+import time
 from typing import List, Optional, Dict
 from datetime import datetime
 from pathlib import Path
@@ -60,6 +61,8 @@ class DocumentResponse(BaseModel):
 class QueryRequest(BaseModel):
     query: str
     system_name: Optional[str] = None
+    model: Optional[str] = "o3-mini"
+    use_graph: bool = False
     
 class SystemRequest(BaseModel):
     name: str
@@ -92,7 +95,7 @@ def get_file_info(file_path):
         "date_added": datetime.fromtimestamp(path.stat().st_ctime).isoformat()
     }
 
-def process_document_task(task_id, pdf_path, rag_dir=DEFAULT_RAG_DATA_DIR):
+def process_document_task(task_id, pdf_path, rag_dir=DEFAULT_RAG_DATA_DIR, use_graph=False):
     """Background task to process a document"""
     try:
         active_tasks[task_id] = {"status": "processing", "progress": 0, "message": "Starting document processing"}
@@ -108,18 +111,21 @@ def process_document_task(task_id, pdf_path, rag_dir=DEFAULT_RAG_DATA_DIR):
         try:
             active_tasks[task_id]["progress"] = 20
             active_tasks[task_id]["message"] = "Loading RAG system"
-            rag_system = DocumentRAGSystem(load_from=rag_dir)
-            logging.info(f"Loaded existing system from {rag_dir}")
+            start_time = time.time()
+            rag_system = DocumentRAGSystem(load_from=rag_dir, use_graph=use_graph)
+            logging.info(f"Loaded existing system from {rag_dir} in {time.time() - start_time:.2f} seconds")
         except FileNotFoundError:
             active_tasks[task_id]["message"] = "Creating new RAG system"
-            rag_system = DocumentRAGSystem()
+            rag_system = DocumentRAGSystem(use_graph=use_graph)
             logging.info(f"Created new RAG system")
         
         active_tasks[task_id]["progress"] = 40
         active_tasks[task_id]["message"] = f"Processing document {pdf_path}"
         
         # Add document to the system
+        start_time = time.time()
         rag_system.add_document(pdf_path, save_directory=rag_dir)
+        logging.info(f"Document processed in {time.time() - start_time:.2f} seconds")
         
         active_tasks[task_id]["progress"] = 90
         active_tasks[task_id]["message"] = "Saving system state"
@@ -253,8 +259,13 @@ async def delete_document(document_id: str):
         raise HTTPException(status_code=500, detail=f"Error deleting document: {str(e)}")
 
 @documents_router.post("/{document_id}/process")
-async def process_document(document_id: str, background_tasks: BackgroundTasks):
-    """Process a document by ID"""
+async def process_document(document_id: str, background_tasks: BackgroundTasks, use_graph: bool = False):
+    """
+    Process a document by ID
+    
+    - **document_id**: ID of the document to process
+    - **use_graph**: Whether to build and use semantic graph (improves quality but slower)
+    """
     try:
         # Find the document across all categories
         document_path = None
@@ -281,7 +292,7 @@ async def process_document(document_id: str, background_tasks: BackgroundTasks):
         task_id = f"process_{document_id}_{datetime.now().strftime('%Y%m%d%H%M%S')}"
         
         # Start background processing
-        background_tasks.add_task(process_document_task, task_id, document_path, DEFAULT_RAG_DATA_DIR)
+        background_tasks.add_task(process_document_task, task_id, document_path, DEFAULT_RAG_DATA_DIR, use_graph)
         
         # Initialize task status
         active_tasks[task_id] = {"status": "queued", "progress": 0, "message": "Task queued"}
@@ -392,7 +403,14 @@ async def delete_rag_system(system_name: str):
 # Query endpoints
 @query_router.post("/")
 async def query_document(request: QueryRequest):
-    """Query documents using the RAG system"""
+    """
+    Query documents using the RAG system
+    
+    - **query**: The question to ask about your documents
+    - **system_name**: RAG system to use (default="default")
+    - **model**: LLM model to use (default="o3-mini", options: "o3-mini", "deepseek-r1", "deepseek-v3", "claude-3-sonnet", "gpt-4")
+    - **use_graph**: Whether to use graph-based retrieval (slower but more accurate)
+    """
     try:
         # Determine which RAG system to use
         rag_dir = DEFAULT_RAG_DATA_DIR
@@ -403,8 +421,11 @@ async def query_document(request: QueryRequest):
             raise HTTPException(status_code=404, detail=f"RAG system not found or not initialized in {rag_dir}")
             
         # Import and load RAG system
+        start_time = time.time()
+        logging.info(f"Loading RAG system from {rag_dir}...")
         from document_rag import DocumentRAGSystem
-        rag_system = DocumentRAGSystem(load_from=rag_dir)
+        rag_system = DocumentRAGSystem(load_from=rag_dir, use_graph=request.use_graph)
+        logging.info(f"RAG system loaded in {time.time() - start_time:.2f} seconds")
         
         # Get API key from environment
         api_key = os.getenv('REQUESTY_API_KEY')
@@ -412,13 +433,17 @@ async def query_document(request: QueryRequest):
             raise HTTPException(status_code=400, detail="API key not found in environment variables.")
             
         # Initialize LLM client
-        llm_client = RequestyLLMClient(api_key=api_key)
+        logging.info(f"Initializing LLM client with model: {request.model}")
+        llm_client = RequestyLLMClient(api_key=api_key, default_model=request.model)
         
         # Generate response
+        query_start = time.time()
+        logging.info(f"Generating response for query: '{request.query[:50]}...'")
         response = rag_system.generate_response(
             query=request.query,
             api_call_function=lambda prompt: llm_client.generate_response(prompt)
         )
+        logging.info(f"Response generated in {time.time() - query_start:.2f} seconds")
         
         return {"response": response}
     except HTTPException:
@@ -457,9 +482,11 @@ async def process_document_legacy(request: DocumentRequest):
         if is_document_processed(pdf_path, DEFAULT_RAG_DATA_DIR):
             return {"message": f"Document {pdf_path} is already processed."}
         else:
+            start_time = time.time()
             from document_rag import DocumentRAGSystem
-            rag_system = DocumentRAGSystem(load_from=DEFAULT_RAG_DATA_DIR)
+            rag_system = DocumentRAGSystem(load_from=DEFAULT_RAG_DATA_DIR, use_graph=False)
             rag_system.add_document(pdf_path, save_directory=DEFAULT_RAG_DATA_DIR)
+            logging.info(f"Document processed in {time.time() - start_time:.2f} seconds")
             return {"message": f"Document {pdf_path} added to system."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -469,13 +496,30 @@ async def query_document_legacy(request: QueryRequest):
     """Legacy endpoint for querying documents"""
     try:
         query = request.query
+        model = request.model or "o3-mini"
+        use_graph = request.use_graph
+        
+        start_time = time.time()
         from document_rag import DocumentRAGSystem
-        rag_system = DocumentRAGSystem(load_from=DEFAULT_RAG_DATA_DIR)
+        logging.info(f"Loading RAG system from {DEFAULT_RAG_DATA_DIR}...")
+        rag_system = DocumentRAGSystem(load_from=DEFAULT_RAG_DATA_DIR, use_graph=use_graph)
+        logging.info(f"RAG system loaded in {time.time() - start_time:.2f} seconds")
+        
         api_key = os.getenv('REQUESTY_API_KEY')
         if not api_key:
             raise HTTPException(status_code=400, detail="API key not found in environment variables.")
-        llm_client = RequestyLLMClient(api_key=api_key)
-        response = rag_system.generate_response(query=query, api_call_function=lambda prompt: llm_client.generate_response(prompt))
+            
+        logging.info(f"Initializing LLM client with model: {model}")
+        llm_client = RequestyLLMClient(api_key=api_key, default_model=model)
+        
+        query_start = time.time()
+        logging.info(f"Generating response for query: '{query[:50]}...'")
+        response = rag_system.generate_response(
+            query=query,
+            api_call_function=lambda prompt: llm_client.generate_response(prompt)
+        )
+        logging.info(f"Response generated in {time.time() - query_start:.2f} seconds")
+        
         return {"response": response}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -497,7 +541,12 @@ def main():
     parser = argparse.ArgumentParser(description='Document RAG System API')
     parser.add_argument('--host', type=str, default="0.0.0.0", help='Host to bind the server to')
     parser.add_argument('--port', type=int, default=8000, help='Port to bind the server to')
+    parser.add_argument('--model', type=str, default="o3-mini", help='Default LLM model to use')
     args = parser.parse_args()
+    
+    # Set default model in environment
+    os.environ['DEFAULT_MODEL'] = args.model
+    logging.info(f"Using default model: {args.model}")
     
     # Start the server
     uvicorn.run(app, host=args.host, port=args.port)

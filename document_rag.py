@@ -5,6 +5,7 @@ import tiktoken
 import json
 import pickle
 import logging
+import time
 from typing import List, Dict, Any, Callable, Optional, Tuple, Union
 from sentence_transformers import SentenceTransformer
 from dotenv import load_dotenv
@@ -60,15 +61,29 @@ class DocumentRAGSystem:
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         self.use_graph = use_graph
+        self.graph_built = False  # Flag to track if graph has been built
+        
+        # Track initialization start time
+        start_time = time.time()
         
         # Initialize embedding model and tokenizer regardless of loading path
-        # to ensure they're always available
+        logging.info("Initializing SentenceTransformer model...")
         self.embedding_model = SentenceTransformer(embedding_model)
+        logging.info(f"SentenceTransformer initialized in {time.time() - start_time:.2f} seconds")
+        
         self.tokenizer = tiktoken.get_encoding(tokenizer_name)
         self.max_context_tokens = max_context_tokens
         
         # Initialize NLP models for advanced metadata extraction
-        self.nlp = spacy.load("de_core_news_lg")
+        try:
+            nlp_start = time.time()
+            logging.info("Loading spaCy model (this may take time)...")
+            self.nlp = spacy.load("de_core_news_lg")
+            logging.info(f"spaCy model loaded in {time.time() - nlp_start:.2f} seconds")
+        except Exception as e:
+            logging.warning(f"Error loading spaCy model: {str(e)}")
+            self.nlp = None
+            
         self.lda_model = LatentDirichletAllocation(n_components=5, random_state=42)
         self.vectorizer = CountVectorizer(stop_words=None)  # or 'english' if preferred
         self.rake = Rake()
@@ -79,8 +94,10 @@ class DocumentRAGSystem:
                 raise FileNotFoundError(f"Directory {load_from} does not exist")
             
             try:
+                load_start = time.time()
+                logging.info(f"Loading system state from {load_from}...")
                 self.load_system_state(load_from)
-                print(f"System state loaded from {load_from}")
+                logging.info(f"System state loaded from {load_from} in {time.time() - load_start:.2f} seconds")
                 return  # Skip the rest of initialization if loaded successfully
             except Exception as e:
                 logging.error(f"Error loading system state: {str(e)}")
@@ -88,28 +105,29 @@ class DocumentRAGSystem:
         
         # If we get here, either no load_from was specified or loading failed
         # Collect PDF paths
-        print(f"Collecting PDF paths with docs_directory={docs_directory}, pdf_paths={pdf_paths}")
+        logging.info(f"Collecting PDF paths with docs_directory={docs_directory}, pdf_paths={pdf_paths}")
         all_pdf_paths = collect_pdf_paths(docs_directory, pdf_paths)
         
         # Check if all documents are already processed
         all_processed = all(is_document_processed(pdf_path) for pdf_path in all_pdf_paths)
         
         if all_processed:
-            print("All documents are already processed. Skipping document processing.")
+            logging.info("All documents are already processed. Skipping document processing.")
             return
             
         # Process documents
         self.documents = self.process_documents(all_pdf_paths)
         
         # Create FAISS index
+        index_start = time.time()
+        logging.info("Creating FAISS index...")
         self.index = self.create_faiss_index()
+        logging.info(f"FAISS index created in {time.time() - index_start:.2f} seconds")
         
         # Store original paths for later reference
         self.pdf_paths = all_pdf_paths
         
-        # Build chunk graph for enhanced retrieval if enabled
-        if self.use_graph:
-            self.build_chunk_graph()
+        logging.info(f"Total initialization time: {time.time() - start_time:.2f} seconds")
     
     def process_documents(self, pdf_paths: List[str]) -> Dict:
         """
@@ -135,31 +153,15 @@ class DocumentRAGSystem:
                 # Process chunks in batches to optimize memory usage
                 batch_size = 100
                 embeddings = []
-                logging.info(f"Generating embeddings for chunks")
+                logging.info(f"Generating embeddings for chunks (this may take time)...")
+                embed_start = time.time()
                 for i in range(0, len(chunks), batch_size):
                     batch_chunks = chunks[i:i + batch_size]
                     batch_embeddings = self.embedding_model.encode(batch_chunks)
                     embeddings.extend(batch_embeddings)
-                logging.info(f"Generated {len(embeddings)} embeddings")
+                logging.info(f"Generated {len(embeddings)} embeddings in {time.time() - embed_start:.2f} seconds")
                 
-                # Perform advanced metadata extraction
-                logging.info(f"Extracting entities")
-                entities = self.extract_entities(full_text)
-                logging.info(f"Extracting topics")
-                topics = self.extract_topics(full_text)
-                logging.info(f"Extracting sentiment")
-                sentiment = self.extract_sentiment(full_text)
-                logging.info(f"Extracting keywords")
-                keywords = self.extract_keywords(full_text)
-                
-                # Store metadata
-                metadata = {
-                    'entities': entities,
-                    'topics': topics,
-                    'sentiment': sentiment,
-                    'keywords': keywords
-                }
-                
+                # Perform basic metadata extraction only
                 processed_docs[pdf_path] = {
                     'chunks': chunks,
                     'embeddings': np.array(embeddings),
@@ -185,6 +187,9 @@ class DocumentRAGSystem:
         Returns:
         List[Dict[str, str]]: Extracted entities
         """
+        if self.nlp is None:
+            return []
+            
         doc = self.nlp(text)
         entities = [{'text': ent.text, 'label': ent.label_} for ent in doc.ents]
         return entities
@@ -280,13 +285,16 @@ class DocumentRAGSystem:
                 
             # Check if document is already processed
             if self.is_document_processed(pdf_path, save_directory):
-                print(f"Document {pdf_path} is already processed. Skipping.")
+                logging.info(f"Document {pdf_path} is already processed. Skipping.")
                 return
             
             # Ensure the transformer model and tokenizer are loaded
             # This is now redundant since we initialize in __init__, but keeping for safety
             if not hasattr(self, 'embedding_model') or self.embedding_model is None:
+                logging.info("Initializing embedding model...")
+                start_time = time.time()
                 self.embedding_model = SentenceTransformer(os.getenv('EMBEDDING_MODEL', 'all-MiniLM-L6-v2'))
+                logging.info(f"Embedding model initialized in {time.time() - start_time:.2f} seconds")
             
             if not hasattr(self, 'tokenizer') or self.tokenizer is None:
                 self.tokenizer = tiktoken.get_encoding("cl100k_base")
@@ -295,7 +303,10 @@ class DocumentRAGSystem:
                 self.max_context_tokens = int(os.getenv('MAX_CONTEXT_TOKENS', 3500))
                 
             # Process document
+            start_time = time.time()
+            logging.info(f"Processing document {pdf_path}...")
             new_doc = self.process_documents([pdf_path])
+            logging.info(f"Document processed in {time.time() - start_time:.2f} seconds")
             
             # Add to existing documents dictionary
             self.documents.update(new_doc)
@@ -310,11 +321,15 @@ class DocumentRAGSystem:
                 self.index.add(embeddings)
                 self.index_texts.extend(doc['chunks'])
                 
-            print(f"Document {pdf_path} successfully added.")
+            logging.info(f"Document {pdf_path} successfully added.")
+            
+            # Reset graph built flag since we added new content
+            self.graph_built = False
             
             # Save the updated system state
+            start_time = time.time()
             self.save_system_state(save_directory)
-            print(f"System state updated in {save_directory}")
+            logging.info(f"System state updated in {save_directory} ({time.time() - start_time:.2f} seconds)")
         except FileNotFoundError as e:
             logging.error(f"File not found: {str(e)}")
         except Exception as e:
@@ -376,19 +391,33 @@ class DocumentRAGSystem:
             query_embedding = self.embedding_model.encode([query])[0].astype('float32')
             
             # Search in FAISS index
+            search_start = time.time()
+            logging.info(f"Searching FAISS index for relevant chunks...")
             distances, indices = self.index.search(
                 query_embedding.reshape(1, -1),
                 top_k
             )
+            logging.info(f"FAISS search completed in {time.time() - search_start:.2f} seconds")
             
             # Extract initial relevant texts
             initial_chunks = [self.index_texts[i] for i in indices[0]]
             
-            if not use_graph or not hasattr(self, 'chunk_graph'):
+            if not use_graph:
+                return initial_chunks
+                
+            # Make sure the graph is built before using it
+            if use_graph and not hasattr(self, 'chunk_graph') or not self.graph_built:
+                logging.info("Graph not built yet, building now...")
+                self.ensure_graph_built()
+                
+            if not hasattr(self, 'chunk_graph'):
+                logging.warning("Chunk graph not available. Returning initial chunks only.")
                 return initial_chunks
             
             # Use graph to expand context
+            expand_start = time.time()
             expanded_chunks = self.expand_context_with_graph(indices[0], query_embedding, max_tokens)
+            logging.info(f"Context expansion completed in {time.time() - expand_start:.2f} seconds")
             
             return expanded_chunks
         except Exception as e:
@@ -444,26 +473,28 @@ class DocumentRAGSystem:
             
             # Construct enhanced prompt
             prompt = f"""
-            You are a document question-answering assistant. Your task is to answer the following user question based ONLY on the information provided in the document excerpts below.
-            
-            USER QUESTION: "{query}"
-            
-            DOCUMENT EXCERPTS:
-            {context_text}
-            
-            Instructions:
-            1. Answer ONLY the user question above: "{query}"
-            2. Base your answer ONLY on information in the document excerpts
-            3. If the answer cannot be determined from the excerpts, state that clearly and summarize what topics ARE covered in the excerpts
-            4. Include specific details from the document excerpts when relevant
-            5. If different excerpts contain contradictory information, acknowledge this and explain the discrepancy
-            
-            IMPORTANT: Many document excerpts contain questions as part of their content.
-            - IGNORE ALL QUESTIONS that appear in the document excerpts themselves
-            - ONLY answer the user question: "{query}"
-            
-            If you cannot find information directly related to the user question, explain what topics ARE covered in the provided excerpts so the user understands what information is available.
-            """
+                You are a document question-answering assistant. Your task is to answer the following user question by:
+                1. First using the provided document excerpts as primary source
+                2. Then enriching the answer with your knowledge when appropriate
+                3. Clearly indicating which parts come from the documents and which from your knowledge
+
+                USER QUESTION: "{query}"
+
+                DOCUMENT EXCERPTS:
+                {context_text}
+
+                Instructions:
+                1. Start with information from the document excerpts
+                2. Enhance your answer with relevant additional knowledge
+                3. Use phrases like "According to the documents..." and "Additionally, from general knowledge..."
+                4. Make connections between document information and broader concepts
+                5. If the documents provide partial information, complete it with your expertise
+                6. Maintain clear distinction between document-sourced and additional information
+
+                IMPORTANT: Many document excerpts contain questions as part of their content.
+                - IGNORE ALL QUESTIONS that appear in the document excerpts themselves
+                - ONLY answer the user question: "{query}"
+                """
             
             return prompt
         except Exception as e:
@@ -519,6 +550,9 @@ class DocumentRAGSystem:
         str: Generated response
         """
         try:
+            start_time = time.time()
+            logging.info(f"Starting response generation for query: '{query[:50]}...'")
+            
             # Determine context selection method
             if adaptive and self.use_graph:
                 # Use 90% of token budget for context
@@ -529,14 +563,19 @@ class DocumentRAGSystem:
                 contexts = self.retrieve_relevant_context(query, top_k=top_k)
             
             # Prepare prompt with context
+            logging.info(f"Preparing prompt with {len(contexts)} context chunks")
             prompt = self.prepare_prompt_with_context(query, contexts, include_metadata)
             
             # Truncate prompt to maximum token length
             truncated_prompt = self.truncate_to_max_tokens(prompt)
             
             # API call with prompt
+            logging.info("Making API call to generate response")
+            api_start = time.time()
             response = api_call_function(truncated_prompt)
+            logging.info(f"API call completed in {time.time() - api_start:.2f} seconds")
             
+            logging.info(f"Response generation completed in {time.time() - start_time:.2f} seconds")
             return response
         except Exception as e:
             logging.error(f"Error generating response for query '{query}': {str(e)}")
@@ -556,6 +595,7 @@ class DocumentRAGSystem:
             os.makedirs(directory, exist_ok=True)
             
             # 1. Save document list and metadata as JSON
+            logging.info(f"Saving metadata to {directory}")
             metadata = {
                 "pdf_paths": self.pdf_paths,
                 "document_info": {path: {"chunk_count": len(data["chunks"])}
@@ -566,7 +606,10 @@ class DocumentRAGSystem:
                 json.dump(metadata, f, indent=2)
             
             # 2. Save FAISS index
+            logging.info(f"Saving FAISS index to {directory}")
+            index_start = time.time()
             faiss.write_index(self.index, os.path.join(directory, "document_index.faiss"))
+            logging.info(f"FAISS index saved in {time.time() - index_start:.2f} seconds")
             
             # 3. Save text chunks
             with open(os.path.join(directory, "index_texts.pkl"), "wb") as f:
@@ -580,7 +623,7 @@ class DocumentRAGSystem:
                 with open(doc_path, "wb") as f:
                     pickle.dump(data, f)
             
-            print(f"System state saved to {directory}")
+            logging.info(f"System state saved to {directory}")
         except Exception as e:
             logging.error(f"Error saving system state: {str(e)}")
     
@@ -603,6 +646,7 @@ class DocumentRAGSystem:
             
             # 1. Load metadata
             metadata_path = os.path.join(directory, "metadata.json")
+            logging.info(f"Loading metadata from {metadata_path}")
             if not os.path.exists(metadata_path):
                 raise FileNotFoundError(f"Metadata file not found at {metadata_path}")
                 
@@ -615,11 +659,16 @@ class DocumentRAGSystem:
             index_path = os.path.join(directory, "document_index.faiss")
             if not os.path.exists(index_path):
                 raise FileNotFoundError(f"FAISS index not found at {index_path}")
-                
+            
+            logging.info(f"Loading FAISS index from {index_path} (this may take time)...")
+            index_start = time.time()
+            index_size_mb = os.path.getsize(index_path) / (1024 * 1024)
             self.index = faiss.read_index(index_path)
+            logging.info(f"FAISS index ({index_size_mb:.2f} MB) loaded in {time.time() - index_start:.2f} seconds")
             
             # 3. Load text chunks
             texts_path = os.path.join(directory, "index_texts.pkl")
+            logging.info(f"Loading index texts from {texts_path}")
             if not os.path.exists(texts_path):
                 raise FileNotFoundError(f"Index texts not found at {texts_path}")
                 
@@ -627,28 +676,25 @@ class DocumentRAGSystem:
                 self.index_texts = pickle.load(f)
             
             # 4. Load document chunks and embeddings
+            logging.info("Loading document data...")
+            doc_start = time.time()
             self.documents = {}
             for path in self.pdf_paths:
                 safe_name = path.replace("/", "_").replace("\\", "_")
                 doc_path = os.path.join(directory, f"doc_{safe_name}.pkl")
                 
                 if not os.path.exists(doc_path):
-                    print(f"Warning: Document data not found for {path}")
+                    logging.warning(f"Document data not found for {path}")
                     continue
                     
                 with open(doc_path, "rb") as f:
                     self.documents[path] = pickle.load(f)
+            logging.info(f"Document data loaded in {time.time() - doc_start:.2f} seconds")
             
-            # 5. Initialize embedding model and tokenizer
-            self.embedding_model = SentenceTransformer(os.getenv('EMBEDDING_MODEL', 'all-MiniLM-L6-v2'))
-            self.tokenizer = tiktoken.get_encoding("cl100k_base")
-            self.max_context_tokens = int(os.getenv('MAX_CONTEXT_TOKENS', 3500))
+            # Mark graph as not built yet
+            self.graph_built = False
             
-            # 6. Build chunk graph for enhanced retrieval if enabled
-            if hasattr(self, 'use_graph') and self.use_graph:
-                self.build_chunk_graph()
-            
-            print(f"System state loaded from {directory}")
+            logging.info(f"System state loaded from {directory}")
         except FileNotFoundError as e:
             logging.error(f"File not found: {str(e)}")
             raise
@@ -688,6 +734,17 @@ class DocumentRAGSystem:
         
         return chunks, metadata
     
+    def ensure_graph_built(self):
+        """
+        Ensures the chunk graph is built (if needed)
+        """
+        if self.use_graph and not self.graph_built:
+            start_time = time.time()
+            logging.info("Building chunk graph (this may take significant time)...")
+            self.build_chunk_graph()
+            self.graph_built = True
+            logging.info(f"Chunk graph built in {time.time() - start_time:.2f} seconds")
+    
     def build_chunk_graph(self):
         """
         Builds a graph representation of chunks to capture relationships
@@ -695,6 +752,10 @@ class DocumentRAGSystem:
         if not self.use_graph:
             return
             
+        start_time = time.time()
+        logging.info("Starting chunk graph building process...")
+        
+        # Create a new graph
         self.chunk_graph = nx.Graph()
         
         # Add nodes for all chunks
@@ -702,6 +763,7 @@ class DocumentRAGSystem:
         chunk_to_doc = {}  # Maps global chunk index to document
         global_idx = 0
         
+        logging.info(f"Adding {sum(len(doc['chunks']) for doc in self.documents.values())} nodes to graph...")
         for doc_path, doc_data in self.documents.items():
             for i, embedding in enumerate(doc_data['embeddings']):
                 # The metadata is a dictionary for the whole document, not per chunk
@@ -717,7 +779,8 @@ class DocumentRAGSystem:
         # Convert to numpy array for efficient similarity computation
         all_embeddings = np.array(all_embeddings)
         
-        # Add edges based on similarity and document structure
+        # Add edges based on document structure (adjacent chunks)
+        logging.info("Adding document structure edges...")
         for i in range(len(all_embeddings)):
             doc_path, local_idx = chunk_to_doc[i]
             
@@ -731,15 +794,40 @@ class DocumentRAGSystem:
                 next_global_idx = next(idx for idx, (path, lidx) in chunk_to_doc.items()
                                       if path == doc_path and lidx == local_idx + 1)
                 self.chunk_graph.add_edge(i, next_global_idx, weight=1.0, type='adjacent')
+        
+        # Add edges based on semantic similarity using batched processing
+        logging.info("Computing semantic similarity edges (this is computationally expensive)...")
+        batch_size = 50  # Process in smaller batches to reduce memory usage
+        
+        for i in range(0, len(all_embeddings), batch_size):
+            batch_end = min(i + batch_size, len(all_embeddings))
+            logging.info(f"Processing similarity batch {i}-{batch_end}/{len(all_embeddings)}")
             
-            # Add edges to semantically similar chunks (across all documents)
-            # This is computationally expensive, so we limit to top-k similar chunks
-            similarities = cosine_similarity([all_embeddings[i]], all_embeddings)[0]
-            top_k_indices = np.argsort(similarities)[-6:-1]  # Top 5 excluding self
+            batch_embeddings = all_embeddings[i:batch_end]
+            # Compute similarities for this batch against all embeddings
+            similarities = cosine_similarity(batch_embeddings, all_embeddings)
             
-            for j in top_k_indices:
-                if i != j:  # Avoid self-loops
-                    self.chunk_graph.add_edge(i, j, weight=float(similarities[j]), type='semantic')
+            # Process each embedding in the batch
+            for j in range(batch_end - i):
+                global_idx = i + j
+                sim_array = similarities[j]
+                
+                # Find top similar chunks (excluding self)
+                # Use argsort and get indices of top similar items
+                top_indices = np.argsort(sim_array)[-6:-1]  # Top 5 excluding self
+                
+                # Add edges to top similar chunks
+                for top_idx in top_indices:
+                    if global_idx != top_idx:  # Avoid self-loops
+                        self.chunk_graph.add_edge(global_idx, top_idx, 
+                                                weight=float(sim_array[top_idx]), 
+                                                type='semantic')
+        
+        logging.info(f"Chunk graph built with {len(self.chunk_graph.nodes())} nodes and {len(self.chunk_graph.edges())} edges")
+        logging.info(f"Graph building completed in {time.time() - start_time:.2f} seconds")
+        
+        # Mark graph as built
+        self.graph_built = True
     
     def expand_context_with_graph(self, seed_indices: List[int],
                                  query_embedding: np.ndarray,
@@ -755,7 +843,11 @@ class DocumentRAGSystem:
         Returns:
         List[str]: Expanded context chunks
         """
-        if not self.use_graph or not hasattr(self, 'chunk_graph'):
+        # Make sure graph is built
+        if not self.use_graph or not hasattr(self, 'chunk_graph') or not self.graph_built:
+            self.ensure_graph_built()
+            
+        if not hasattr(self, 'chunk_graph'):
             return [self.index_texts[i] for i in seed_indices]
             
         # Convert global indices to graph nodes
@@ -778,7 +870,10 @@ class DocumentRAGSystem:
             personalization = {k: v/norm_factor for k, v in personalization.items()}
             
         # Run personalized PageRank
+        logging.info("Running PageRank to find related chunks...")
+        pagerank_start = time.time()
         pagerank = nx.pagerank(self.chunk_graph, alpha=0.85, personalization=personalization)
+        logging.info(f"PageRank completed in {time.time() - pagerank_start:.2f} seconds")
         
         # Sort nodes by PageRank score
         sorted_nodes = sorted(pagerank.items(), key=lambda x: x[1], reverse=True)
@@ -901,9 +996,10 @@ class DocumentRAGSystem:
                 raise FileNotFoundError(f"The folder {new_folder} does not exist.")
             
             # Load the system state from the new folder
+            start_time = time.time()
+            logging.info(f"Switching to RAG folder: {new_folder}")
             self.load_system_state(new_folder)
-            
-            print(f"Switched to new RAG folder: {new_folder}")
+            logging.info(f"Switched to new RAG folder in {time.time() - start_time:.2f} seconds")
         except FileNotFoundError as e:
             logging.error(f"File not found: {str(e)}")
         except Exception as e:

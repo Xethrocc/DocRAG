@@ -1,4 +1,7 @@
 import os
+import time
+import hashlib
+import logging
 from typing import Dict, Any, Optional
 from dotenv import load_dotenv
 import openai
@@ -15,19 +18,37 @@ class RequestyLLMClient:
     Client for the Requesty API with support for various models
     """
     
-    # Available models
+    # Available models with their specific configurations
     AVAILABLE_MODELS = {
         "claude-3-sonnet": {
             "model": "anthropic/claude-3-7-sonnet-latest",
-            "provider": "anthropic"
+            "provider": "anthropic",
+            "supports_temperature": True,
+            "token_param": "max_tokens"
         },
         "gpt-4": {
             "model": "openai/gpt-4o",
-            "provider": "openai"
+            "provider": "openai",
+            "supports_temperature": True,
+            "token_param": "max_tokens"
         },
         "deepseek-v3": {
             "model": "deepinfra/deepseek-ai/DeepSeek-V3",
-            "provider": "deepseek"
+            "provider": "deepseek",
+            "supports_temperature": True,
+            "token_param": "max_tokens"
+        },
+        "deepseek-r1": {
+            "model": "deepinfra/deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
+            "provider": "deepseek",
+            "supports_temperature": True,
+            "token_param": "max_tokens"
+        },
+        "o3-mini": {
+            "model": "openai/o3-mini",
+            "provider": "openai",
+            "supports_temperature": False,
+            "token_param": "max_completion_tokens"
         }
     }
     
@@ -37,8 +58,11 @@ class RequestyLLMClient:
         
         Parameters:
         api_key (str, optional): Requesty API key (defaults to REQUESTY_API_KEY env var)
-        default_model (str, optional): Default model (defaults to DEFAULT_MODEL env var or deepseek-v3)
+        default_model (str, optional): Default model (defaults to DEFAULT_MODEL env var or o3-mini)
         """
+        # Initialize response cache
+        self._response_cache = {}
+        
         # Use provided API key or get from environment
         self.api_key = api_key or os.getenv('REQUESTY_API_KEY')
         if not self.api_key:
@@ -48,24 +72,26 @@ class RequestyLLMClient:
         openai.api_key = self.api_key
         openai.api_base = "https://router.requesty.ai/v1"
         
-        # Use provided model or get from environment, with fallback to deepseek-v3
-        self.default_model = default_model or os.getenv('DEFAULT_MODEL', 'deepseek-v3')
+        # Use provided model or get from environment, with fallback to o3-mini
+        self.default_model = default_model or os.getenv('DEFAULT_MODEL', 'o3-mini')
         
         if self.default_model not in self.AVAILABLE_MODELS:
-            raise ValueError(f"Invalid model: {self.default_model}. Available models: {', '.join(self.AVAILABLE_MODELS.keys())}")
+            logging.warning(f"Invalid model: {self.default_model}. Falling back to o3-mini")
+            self.default_model = 'o3-mini'
         
         # Log the selected model
         logging.info(f"Using model: {self.default_model} ({self.AVAILABLE_MODELS[self.default_model]['model']})")
     
-    def generate_response(self, prompt: str, model: str = None, temperature: float = 0.7, max_tokens: int = 1000) -> str:
+    def generate_response(self, prompt: str, model: str = None, temperature: float = 0.7, max_tokens: int = 1000, use_cache: bool = True) -> str:
         """
         Generates a response with the selected model
         
         Parameters:
         prompt (str): Prompt for the model
         model (str, optional): Model to use (overrides default_model)
-        temperature (float): Creativity of the response (0.0-1.0)
+        temperature (float): Creativity of the response (0.0-1.0) - not used for all models
         max_tokens (int): Maximum number of tokens in the response
+        use_cache (bool): Whether to use cached responses
         
         Returns:
         str: Generated response
@@ -73,20 +99,55 @@ class RequestyLLMClient:
         model_name = model if model in self.AVAILABLE_MODELS else self.default_model
         model_info = self.AVAILABLE_MODELS[model_name]
         
+        # Create cache key using a hash of prompt and parameters
+        if use_cache:
+            cache_key = hashlib.md5(f"{prompt[:100]}_{model_name}_{temperature}_{max_tokens}".encode()).hexdigest()
+            
+            # Check if response is cached
+            if cache_key in self._response_cache:
+                logging.info(f"Using cached response for query")
+                return self._response_cache[cache_key]
+        
         try:
-            # Create the completion using the OpenAI client
-            response = openai.ChatCompletion.create(
-                model=model_info["model"],
-                messages=[
+            # Log request info
+            logging.info(f"Making API request to {model_info['model']}")
+            start_time = time.time()
+            
+            # Prepare parameters based on model requirements
+            params = {
+                "model": model_info["model"],
+                "messages": [
                     {"role": "user", "content": prompt}
                 ],
-                temperature=temperature,
-                max_tokens=max_tokens,
-                provider=model_info["provider"]  # Add provider as a parameter
-            )
+                "provider": model_info["provider"],
+                "request_timeout": 180  # 3-minute timeout
+            }
+            
+            # Add temperature if supported by the model
+            if model_info["supports_temperature"]:
+                params["temperature"] = temperature
+                
+            # Add token limit with the correct parameter name for this model
+            token_param = model_info["token_param"]
+            params[token_param] = max_tokens
+            
+            # Create the completion using the OpenAI client
+            response = openai.ChatCompletion.create(**params)
             
             # Extract the response from the API response
-            return response.choices[0].message.content
+            response_text = response.choices[0].message.content
+            
+            # Log timing information
+            elapsed_time = time.time() - start_time
+            token_count = len(response_text.split())
+            tokens_per_sec = token_count / elapsed_time if elapsed_time > 0 else 0
+            logging.info(f"API request completed in {elapsed_time:.2f} seconds ({tokens_per_sec:.2f} tokens/sec)")
+            
+            # Cache the response if caching is enabled
+            if use_cache:
+                self._response_cache[cache_key] = response_text
+                
+            return response_text
             
         except openai.error.OpenAIError as e:
             logging.error(f"OpenAI API error: {str(e)}")
