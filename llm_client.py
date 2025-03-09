@@ -82,7 +82,7 @@ class RequestyLLMClient:
         # Log the selected model
         logging.info(f"Using model: {self.default_model} ({self.AVAILABLE_MODELS[self.default_model]['model']})")
     
-    def generate_response(self, prompt: str, model: str = None, temperature: float = 0.7, max_tokens: int = 1000, use_cache: bool = True) -> str:
+    def generate_response(self, prompt: str, model: str = None, temperature: float = 0.7, max_tokens: int = 10000, use_cache: bool = True) -> str:
         """
         Generates a response with the selected model
         

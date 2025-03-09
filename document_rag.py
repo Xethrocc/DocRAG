@@ -477,6 +477,7 @@ class DocumentRAGSystem:
                 1. First using the provided document excerpts as primary source
                 2. Then enriching the answer with your knowledge when appropriate
                 3. Clearly indicating which parts come from the documents and which from your knowledge
+                4. Answer in markdown format.
 
                 USER QUESTION: "{query}"
 

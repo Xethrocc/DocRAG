@@ -50,6 +50,4 @@ tmp/
 temp/
 
 
-rag_data/document_index.faiss
-rag_data/index_texts.pkl
-rag_data/metadata.json
+G\documents\academic\*
